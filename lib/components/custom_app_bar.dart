@@ -25,7 +25,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.showLogout = false,
     this.notificationCount = 0,
     this.onLogoutTap,
-    this.actions, required void Function() onBack,
+    this.actions, required void Function() onBack, required bool isDarkMode,
   }) : super(key: key);
 
   @override

@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -57,6 +56,9 @@ class _CheckOutScreenState extends State<CheckOutScreen> with TickerProviderStat
       parent: _animationController,
       curve: Curves.easeOutCubic,
     ));
+
+    // Start animation to ensure initial visibility
+    _animationController.forward();
   }
 
   void _loadInitialData() {
@@ -103,7 +105,8 @@ class _CheckOutScreenState extends State<CheckOutScreen> with TickerProviderStat
       }
     });
   }
-Future<void> _fetchVisitor(String idNumber) async {
+
+  Future<void> _fetchVisitor(String idNumber) async {
   if (idNumber.trim().isEmpty) {
     _showErrorMessage('Please enter an ID number');
     return;
@@ -112,7 +115,10 @@ Future<void> _fetchVisitor(String idNumber) async {
   final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
 
   try {
-    final validationError = visitorProvider.validateIdNumber(idNumber, _visitor?.idType ?? 'national_id');
+    final validationError = visitorProvider.validateIdNumber(
+      idNumber,
+      _visitor?.idType ?? 'national_id',
+    );
     if (validationError != null) {
       _showErrorMessage(validationError);
       return;
@@ -135,13 +141,18 @@ Future<void> _fetchVisitor(String idNumber) async {
   });
 
   try {
+    // Load checked-in visitors if not already loaded
     if (visitorProvider.visitors.isEmpty) {
       await visitorProvider.loadCheckedInVisitors();
     }
 
     final visitors = visitorProvider.visitors;
     print('🔍 Searching for visitor with ID: $idNumber, Visitors count: ${visitors.length}');
-    print('📋 Available visitors: ${visitors.map((v) => {'idNumber': v.idNumber, 'action': v.action}).toList()}');
+    print('📋 Available visitors: ${visitors.map((v) => {
+      'idNumber': v.idNumber,
+      'action': v.action,
+      'tag': v.tagNumber ?? v.visitorTagId
+    }).toList()}');
 
     if (visitors.isEmpty) {
       _showErrorMessage('No checked-in visitors available. Please refresh and try again.');
@@ -153,7 +164,9 @@ Future<void> _fetchVisitor(String idNumber) async {
     Visitor? visitor;
     try {
       visitor = visitors.firstWhere(
-        (v) => v.idNumber?.toUpperCase() == searchId && v.action == 'checked in',
+        (v) =>
+            v.idNumber?.toUpperCase() == searchId &&
+            v.action == 'checked in',
         orElse: () => throw Exception('Visitor not found'),
       );
     } catch (e) {
@@ -169,9 +182,15 @@ Future<void> _fetchVisitor(String idNumber) async {
 
     setState(() {
       _visitor = visitor;
-      print('✅ Visitor found: ${visitor?.name}, ID: ${visitor?.idNumber}, Action: ${visitor?.action}');
+      print('✅ Visitor found: ${visitor?.name}, '
+            'ID: ${visitor?.idNumber}, '
+            'Action: ${visitor?.action}, '
+            'Tag: ${visitor?.tagNumber ?? visitor?.visitorTagId}');
     });
 
+    // Trigger animation and scroll
+    _animationController.reset();
+    _animationController.forward();
     _scrollToVisitorInfo();
   } catch (e) {
     String errorMsg = 'Error fetching visitor information';
@@ -188,18 +207,23 @@ Future<void> _fetchVisitor(String idNumber) async {
     });
   }
 }
-  bool _isValidVisitorData(Visitor visitor) {
-    return visitor.name.isNotEmpty && visitor.idNumber.isNotEmpty;
-  }
+
+bool _isValidVisitorData(Visitor visitor) {
+  return visitor.name.isNotEmpty && visitor.idNumber.isNotEmpty;
+}
+
 
   void _scrollToVisitorInfo() {
     Future.delayed(Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
+        print('🔍 Scrolling to maxScrollExtent: ${_scrollController.position.maxScrollExtent}');
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: Duration(milliseconds: 500),
           curve: Curves.easeInOut,
         );
+      } else {
+        print('⚠️ ScrollController has no clients');
       }
     });
   }
@@ -367,7 +391,12 @@ Future<void> _fetchVisitor(String idNumber) async {
   }
 
   Widget _buildVisitorInfoCard() {
-    if (_visitor == null) return SizedBox.shrink();
+    if (_visitor == null) {
+      print('🔍 _buildVisitorInfoCard: No visitor, returning SizedBox.shrink');
+      return SizedBox.shrink();
+    }
+
+    print('🔍 _buildVisitorInfoCard: Rendering visitor card for ${_visitor!.name}, ID: ${_visitor!.idNumber}');
 
     return SlideTransition(
       position: _slideAnimation,
@@ -501,44 +530,50 @@ Future<void> _fetchVisitor(String idNumber) async {
     );
   }
 
-Widget _buildVisitInfo() {
-  final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
-  final host = _visitor!.host != null
-      ? (_visitor!.host is String
-          ? (jsonDecode(_visitor!.host! as String) as Map?)?.cast<String, dynamic>()
-          : _visitor!.host as Map<String, dynamic>?)
-      : null;
-  final office = _visitor!.office != null
-      ? (_visitor!.office is String
-          ? (jsonDecode(_visitor!.office! as String) as Map?)?.cast<String, dynamic>()
-          : _visitor!.office as Map<String, dynamic>?)
-      : null;
-  final destination = visitorProvider.destinations.firstWhere(
-    (dest) => dest['id']?.toString() == _visitor!.destinationId,
-    orElse: () => {'id': 'unknown', 'name': 'Unknown'},
-  );
-  final tag = visitorProvider.visitorTags.firstWhere(
-    (tag) => tag['id']?.toString() == _visitor!.visitorTagId,
-    orElse: () => {'id': 'unknown', 'name': _visitor!.visitorTagId ?? 'Unknown'},
-  );
+  Widget _buildVisitInfo() {
+    final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
+    final host = _visitor!.host != null
+        ? (_visitor!.host is String
+            ? (jsonDecode(_visitor!.host! as String) as Map?)?.cast<String, dynamic>()
+            : _visitor!.host as Map<String, dynamic>?)
+        : null;
+    final office = _visitor!.office != null
+        ? (_visitor!.office is String
+            ? (jsonDecode(_visitor!.office! as String) as Map?)?.cast<String, dynamic>()
+            : _visitor!.office as Map<String, dynamic>?)
+        : null;
+    final destination = visitorProvider.destinations.isNotEmpty
+        ? visitorProvider.destinations.firstWhere(
+            (dest) => dest['id']?.toString() == _visitor!.destinationId,
+            orElse: () => {'id': 'unknown', 'name': 'Unknown'},
+          )
+        : {'id': 'unknown', 'name': 'Unknown'};
+    final tag = visitorProvider.visitorTags.isNotEmpty
+        ? visitorProvider.visitorTags.firstWhere(
+            (tag) => tag['id']?.toString() == _visitor!.visitorTagId,
+            orElse: () => {'id': 'unknown', 'name': _visitor!.visitorTagId ?? 'Unknown'},
+          )
+        : {'id': 'unknown', 'name': _visitor!.visitorTagId ?? 'Unknown'};
 
-  return _buildInfoSection(
-    'Visit Information',
-    Icons.business,
-    AppColors.info,
-    [
-      if (host != null && host['name'] != null)
-        _buildInfoRow('Host', host['name'].toString(), Icons.person_add),
-      if (office != null && office['name'] != null)
-        _buildInfoRow('Office', office['name'].toString(), Icons.business),
-      _buildInfoRow('Visit Type', _visitor!.visitType?.toUpperCase() ?? 'Unknown', Icons.event),
-      _buildInfoRow('Destination', destination['name']?.toString() ?? 'Unknown', Icons.location_on),
-      _buildInfoRow('Visitor Tag', tag['name']?.toString() ?? 'Unknown', Icons.tag),
-      _buildInfoRow('Gate', _visitor!.gate ?? _visitor!.visitorGateId ?? 'Unknown', Icons.door_front_door),
-      _buildInfoRow('Check-in Time', _formatDateTime(_visitor!.time ?? DateTime.now()), Icons.access_time),
-    ],
-  );
-}
+    print('🔍 Destination: $destination, Tag: $tag');
+
+    return _buildInfoSection(
+      'Visit Information',
+      Icons.business,
+      AppColors.info,
+      [
+        if (host != null && host['name'] != null)
+          _buildInfoRow('Host', host['name'].toString(), Icons.person_add),
+        if (office != null && office['name'] != null)
+          _buildInfoRow('Office', office['name'].toString(), Icons.business),
+        _buildInfoRow('Visit Type', _visitor!.visitType?.toUpperCase() ?? 'Unknown', Icons.event),
+        _buildInfoRow('Destination', destination['name']?.toString() ?? 'Unknown', Icons.location_on),
+        _buildInfoRow('Visitor Tag', tag['name']?.toString() ?? 'Unknown', Icons.tag),
+        _buildInfoRow('Gate', _visitor!.gate ?? _visitor!.visitorGateId ?? 'Unknown', Icons.door_front_door),
+        _buildInfoRow('Check-in Time', _formatDateTime(_visitor!.time ?? DateTime.now()), Icons.access_time),
+      ],
+    );
+  }
 
   Widget _buildInfoSection(String title, IconData icon, Color color, List<Widget> rows) {
     return Column(
@@ -727,14 +762,17 @@ Widget _buildVisitInfo() {
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
     final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
 
+    print('🔍 Building CheckOutScreen, _visitor: ${_visitor?.name}, _isLoading: $_isLoading');
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: CustomAppBar(
         title: 'Check Out Visitor',
+        isDarkMode: false, // Set according to your theme or logic
         color: Colors.white,
         backgroundColor: AppColors.primaryBlue,
         showBackButton: true,
-        onBack: () => Navigator.pop(context),
+        onBack: () => Navigator.pop(context), actions: [],
       ),
       body: SafeArea(
         child: SingleChildScrollView(

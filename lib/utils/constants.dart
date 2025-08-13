@@ -15,5 +15,6 @@ class AppStrings {
   static const String appName = 'Strathmore Visitor Management';
   static const String universityName = 'Strathmore University';
   static const String welcomeMessage = 'Welcome to Strathmore University';
-  static const String apiBaseUrl = 'http://10.20.101.42:8000'; // Added API base URL
+  static const String apiBaseUrl =
+      'http://10.42.0.1:8000'; // Added API base URL
 }

@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:liquid_swipe/liquid_swipe.dart';
+import 'package:confetti/confetti.dart';
 import '../utils/constants.dart';
 import '../components/custom_app_bar.dart';
 import '../components/custom_bottom_nav.dart';
@@ -17,11 +19,14 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _currentIndex = 0;
   late AnimationController _animationController;
-  late AnimationController _pulseController;
   late AnimationController _slideController;
+  late AnimationController _scaleController;
   late Animation<double> _fadeAnimation;
-  late Animation<double> _pulseAnimation;
   late Animation<Offset> _slideAnimation;
+  late Animation<double> _scaleAnimation;
+  late ConfettiController _confettiController;
+  final LiquidController _liquidController = LiquidController();
+  final PageController _pageController = PageController();
 
   // Data
   int todaysVisitors = 0;
@@ -31,12 +36,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool isDarkMode = false;
   String selectedTimeRange = 'Today';
   String? deviceGate;
+  bool _isRefreshing = false;
+  double _scrollOffset = 0;
 
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
     _loadUserPreferences();
+    _confettiController = ConfettiController(duration: const Duration(seconds: 1));
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshData();
     });
@@ -44,17 +53,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _initializeAnimations() {
     _animationController = AnimationController(
-      duration: Duration(milliseconds: 800),
-      vsync: this,
-    );
-
-    _pulseController = AnimationController(
-      duration: Duration(milliseconds: 2000),
+      duration: Duration(milliseconds: 1200),
       vsync: this,
     );
 
     _slideController = AnimationController(
-      duration: Duration(milliseconds: 600),
+      duration: Duration(milliseconds: 1000),
+      vsync: this,
+    );
+
+    _scaleController = AnimationController(
+      duration: Duration(milliseconds: 800),
       vsync: this,
     );
 
@@ -63,15 +72,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
-
-    _pulseAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.2,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
+      curve: Curves.easeOutQuart,
     ));
 
     _slideAnimation = Tween<Offset>(
@@ -79,12 +80,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _slideController,
-      curve: Curves.easeOutBack,
+      curve: Curves.fastOutSlowIn,
+    ));
+
+    _scaleAnimation = Tween<double>(
+      begin: 0.9,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _scaleController,
+      curve: Curves.elasticOut,
     ));
 
     _animationController.forward();
     _slideController.forward();
-    _pulseController.repeat(reverse: true);
+    _scaleController.forward();
   }
 
   Future<void> _loadUserPreferences() async {
@@ -95,29 +104,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       isDarkMode = prefs.getBool('isDarkMode') ?? false;
       deviceGate = loadedGate;
     });
-
-    print('🎯 Preferences Loaded — DeviceGate: $deviceGate');
   }
 
   @override
   void dispose() {
     _animationController.dispose();
-    _pulseController.dispose();
     _slideController.dispose();
+    _scaleController.dispose();
+    _confettiController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    final cardPadding = isSmallScreen ? 16.0 : 24.0;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: isDarkMode ? Color(0xFF0A0E21) : Color(0xFFF8FAFF),
+      extendBodyBehindAppBar: true,
       appBar: CustomAppBar(
         title: AppStrings.universityName,
         color: Colors.white,
-        backgroundColor: AppColors.primaryBlue,
+        backgroundColor: Colors.transparent,
         showBackButton: false,
         showNotifications: true,
         showAccount: true,
@@ -131,44 +142,256 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         actions: [
           IconButton(
             icon: Icon(
-              isDarkMode ? Icons.light_mode : Icons.dark_mode,
+              isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
               color: Colors.white,
             ),
             onPressed: _toggleDarkMode,
           ),
-        ], onBack: () {  },
+        ],
+        onBack: () {},
+        isDarkMode: isDarkMode,
       ),
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: RefreshIndicator(
-            onRefresh: _refreshData,
-            color: AppColors.primaryBlue,
-            child: SingleChildScrollView(
-              physics: BouncingScrollPhysics(),
-              child: Padding(
-                padding: EdgeInsets.all(isSmallScreen ? 16.0 : 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SlideTransition(
-                      position: _slideAnimation,
-                      child: _buildWelcomeCard(cardPadding, isSmallScreen),
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          setState(() {
+            _scrollOffset = notification.metrics.pixels;
+          });
+          return false;
+        },
+        child: Stack(
+          children: [
+            // Animated Background
+            AnimatedContainer(
+              duration: Duration(milliseconds: 500),
+              height: 280 + (_scrollOffset * 0.5).clamp(280.0, 400.0),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.primaryBlue,
+                    AppColors.secondaryBlue,
+                  ],
+                ),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(30),
+                  bottomRight: Radius.circular(30),
+                ),
+              ),
+            ),
+            
+            // Confetti
+            Align(
+              alignment: Alignment.topCenter,
+              child: ConfettiWidget(
+                confettiController: _confettiController,
+                blastDirectionality: BlastDirectionality.explosive,
+                shouldLoop: false,
+                colors: const [
+                  Colors.white,
+                  AppColors.primaryBlue,
+                  Colors.amber,
+                  Colors.green,
+                ],
+              ),
+            ),
+            
+            // Main Content
+            SafeArea(
+              child: RefreshIndicator(
+                onRefresh: _refreshData,
+                color: Colors.white,
+                backgroundColor: AppColors.primaryBlue,
+                displacement: 80,
+                edgeOffset: 20,
+                triggerMode: RefreshIndicatorTriggerMode.anywhere,
+                child: CustomScrollView(
+                  physics: BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: SizedBox(height: 80), // Space for app bar
                     ),
-                    SizedBox(height: isSmallScreen ? 20 : 24),
-                    _buildTimeRangeSelector(isSmallScreen),
-                    SizedBox(height: isSmallScreen ? 16 : 20),
-                    _buildEnhancedStats(isSmallScreen),
-                    SizedBox(height: isSmallScreen ? 20 : 24),
-                    _buildSectionHeader('Quick Actions', isSmallScreen),
-                    SizedBox(height: isSmallScreen ? 16 : 20),
-                    _buildMenuGrid(isSmallScreen),
-                    SizedBox(height: isSmallScreen ? 20 : 24),
+                    
+                    // Gate Header Section
+                    SliverToBoxAdapter(
+                      child: _buildGateHeader(isSmallScreen),
+                    ),
+                    
+                    // Time Range Selector
+                    SliverToBoxAdapter(
+                      child: _buildTimeRangeSelector(isSmallScreen),
+                    ),
+                    
+                    // Stats Overview - Updated with more top padding
+                    SliverPadding(
+                      padding: EdgeInsets.only(
+                        left: isSmallScreen ? 16 : 24,
+                        right: isSmallScreen ? 16 : 24,
+                        top: 30, // Increased top padding to push cards down
+                        bottom: 16,
+                      ),
+                      sliver: SliverGrid(
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 16,
+                          crossAxisSpacing: 16,
+                          childAspectRatio: 1.1,
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) => _buildModernStatCard(
+                            index == 0 ? 'Today\'s Visitors' : 
+                            index == 1 ? 'Currently In' : 
+                            index == 2 ? 'Total Visitors' : 'Checked Out',
+                            index == 0 ? todaysVisitors.toString() : 
+                            index == 1 ? currentlyIn.toString() : 
+                            index == 2 ? totalVisitors.toString() : checkedOutToday.toString(),
+                            index == 0 ? Icons.people_alt_rounded : 
+                            index == 1 ? Icons.person_pin_circle_rounded : 
+                            index == 2 ? Icons.groups_rounded : Icons.logout_rounded,
+                            index == 0 ? Color(0xFF10B981) : 
+                            index == 1 ? Color(0xFFF59E0B) : 
+                            index == 2 ? AppColors.primaryBlue : Color(0xFFEF4444),
+                            isSmallScreen,
+                            index == 0 ? '+12%' : index == 2 ? '+5%' : '',
+                            index == 0 || index == 2,
+                          ),
+                          childCount: 4,
+                        ),
+                      ),
+                    ),
+                    
+                    // Quick Actions Title
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          left: isSmallScreen ? 24 : 32,
+                          top: 24,
+                          bottom: 16,
+                        ),
+                        child: Text(
+                          'Quick Actions',
+                          style: GoogleFonts.poppins(
+                            fontSize: isSmallScreen ? 22 : 26,
+                            fontWeight: FontWeight.w700,
+                            color: isDarkMode ? Colors.white : Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    // Quick Actions
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 16 : 24),
+                      sliver: SliverGrid(
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 16,
+                          crossAxisSpacing: 16,
+                          childAspectRatio: 1.3,
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final actions = [
+                              {
+                                'title': 'New Visitor',
+                                'subtitle': 'Register visitor',
+                                'icon': Icons.person_add_alt_1_rounded,
+                                'color': Color(0xFF10B981),
+                                'route': '/visitor-registration'
+                              },
+                              {
+                                'title': 'Check Out',
+                                'subtitle': 'Complete visit',
+                                'icon': Icons.logout_rounded,
+                                'color': Color(0xFFF59E0B),
+                                'route': '/check-out'
+                              },
+                              {
+                                'title': 'Verify Student',
+                                'subtitle': 'ID verification',
+                                'icon': Icons.verified_user_rounded,
+                                'color': Color(0xFF3B82F6),
+                                'route': '/lost-id-verification'
+                              },
+                              {
+                                'title': 'Settings',
+                                'subtitle': 'App preferences',
+                                'icon': Icons.settings_rounded,
+                                'color': Color(0xFF8B5CF6),
+                                'route': '/settings'
+                              },
+                            ];
+                            return _buildModernActionCard(
+                              actions[index]['title'] as String,
+                              actions[index]['subtitle'] as String,
+                              actions[index]['icon'] as IconData,
+                              actions[index]['color'] as Color,
+                              actions[index]['route'] as String,
+                              isSmallScreen,
+                            );
+                          },
+                          childCount: 4,
+                        ),
+                      ),
+                    ),
+                    
+                    // Recent Visitors Header
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          left: isSmallScreen ? 24 : 32,
+                          top: 24,
+                          bottom: 16,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Recent Visitors',
+                              style: GoogleFonts.poppins(
+                                fontSize: isSmallScreen ? 22 : 26,
+                                fontWeight: FontWeight.w700,
+                                color: isDarkMode ? Colors.white : Color(0xFF0F172A),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pushNamed(context, '/visitor-list');
+                              },
+                              child: Text(
+                                'View All',
+                                style: GoogleFonts.inter(
+                                  color: AppColors.primaryBlue,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    // Recent Visitors List
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 16 : 24),
+                      sliver: SliverToBoxAdapter(
+                        child: Consumer<VisitorProvider>(
+                          builder: (context, visitorProvider, child) {
+                            final recentVisitors = visitorProvider.visitors.take(3).toList();
+                            return _buildRecentVisitors(recentVisitors, isSmallScreen);
+                          },
+                        ),
+                      ),
+                    ),
+                    
+                    SliverToBoxAdapter(
+                      child: SizedBox(height: 100),
+                    ),
                   ],
                 ),
               ),
             ),
-          ),
+          ],
         ),
       ),
       bottomNavigationBar: CustomBottomNav(
@@ -178,87 +401,144 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         onBack: () {},
         step: 0,
         isLoading: false,
+        isDarkMode: isDarkMode,
         children: const <Widget>[],
       ),
       floatingActionButton: _buildFloatingActionButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
-  Widget _buildWelcomeCard(double cardPadding, bool isSmallScreen) {
+  Widget _buildGateHeader(bool isSmallScreen) {
     return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(cardPadding),
+      margin: EdgeInsets.all(isSmallScreen ? 16 : 24),
+      padding: EdgeInsets.all(isSmallScreen ? 20 : 24),
       decoration: BoxDecoration(
-        color: AppColors.primaryBlue.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(25),
-        border: Border.all(
-          color: AppColors.primaryBlue.withOpacity(0.3),
-          width: 2,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.primaryBlue.withOpacity(0.9),
+            AppColors.secondaryBlue.withOpacity(0.9),
+          ],
         ),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 8,
-            offset: Offset(0, 4),
+            color: AppColors.primaryBlue.withOpacity(0.3),
+            blurRadius: 20,
+            offset: Offset(0, 8),
           ),
         ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  Icons.location_on_rounded,
+                  color: Colors.white,
+                  size: isSmallScreen ? 24 : 28,
+                ),
+              ),
+              SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Welcome Back!',
-                      style: GoogleFonts.lexend(
-                        fontSize: isSmallScreen ? 18 : 20,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      '${AppStrings.welcomeMessage} - ${deviceGate ?? "Main Gate"}',
-                      style: GoogleFonts.lexend(
-                        fontSize: isSmallScreen ? 22 : 26,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primaryBlue,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Manage your visitors efficiently',
-                      style: GoogleFonts.lexend(
+                      'Current Location',
+                      style: GoogleFonts.inter(
                         fontSize: isSmallScreen ? 14 : 16,
-                        color: Colors.grey[600],
+                        color: Colors.white.withOpacity(0.8),
                         fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      deviceGate ?? 'Main Gate',
+                      style: GoogleFonts.inter(
+                        fontSize: isSmallScreen ? 22 : 26,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
                 ),
               ),
-              ScaleTransition(
-                scale: _pulseAnimation,
-                child: Container(
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: AppColors.primaryBlue.withOpacity(0.3),
-                      width: 2,
+              AnimatedContainer(
+                duration: Duration(milliseconds: 300),
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedContainer(
+                      duration: Duration(milliseconds: 300),
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Online • ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 20),
+          // Animated progress indicator for today's visitors
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Today\'s Progress',
+                    style: GoogleFonts.inter(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 14,
                     ),
                   ),
-                  child: Icon(
-                    Icons.location_on_rounded,
-                    size: isSmallScreen ? 35 : 45,
-                    color: AppColors.primaryBlue,
+                  Text(
+                    '$todaysVisitors visitors',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
+                ],
+              ),
+              SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: LinearProgressIndicator(
+                  value: todaysVisitors / (todaysVisitors + 10).clamp(0.0, 1.0),
+                  backgroundColor: Colors.white.withOpacity(0.2),
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  minHeight: 8,
                 ),
               ),
             ],
@@ -269,54 +549,58 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildTimeRangeSelector(bool isSmallScreen) {
-    final timeRanges = ['Today', 'This Week', 'This Month'];
+    final timeRanges = ['Today', 'This Week', 'This Month', 'Custom'];
 
     return Container(
-      height: 45,
-      child: ListView.builder(
+      height: 50,
+      margin: EdgeInsets.symmetric(horizontal: isSmallScreen ? 16 : 24),
+      child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: timeRanges.length,
+        separatorBuilder: (context, index) => SizedBox(width: 12),
         itemBuilder: (context, index) {
           final isSelected = timeRanges[index] == selectedTimeRange;
-          return Padding(
-            padding: EdgeInsets.only(right: 12),
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                selectedTimeRange = timeRanges[index];
+              });
+              _refreshData();
+              HapticFeedback.selectionClick();
+            },
             child: AnimatedContainer(
               duration: Duration(milliseconds: 300),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    setState(() {
-                      selectedTimeRange = timeRanges[index];
-                    });
-                    _refreshData();
-                  },
-                  borderRadius: BorderRadius.circular(25),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? AppColors.primaryBlue
-                          : AppColors.primaryBlue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(25),
-                      border: Border.all(
-                        color: isSelected
-                            ? AppColors.primaryBlue
-                            : AppColors.primaryBlue.withOpacity(0.3),
-                        width: 2,
-                      ),
-                    ),
-                    child: Text(
-                      timeRanges[index],
-                      style: GoogleFonts.lexend(
-                        color: isSelected
-                            ? Colors.white
-                            : AppColors.primaryBlue,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
+              curve: Curves.easeInOut,
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.white
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(25),
+                border: Border.all(
+                  color: isSelected
+                      ? Colors.white
+                      : Colors.white.withOpacity(0.5),
+                  width: isSelected ? 0 : 1,
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: Offset(0, 4),
+                        ),
+                      ]
+                    : [],
+              ),
+              child: Text(
+                timeRanges[index],
+                style: GoogleFonts.inter(
+                  color: isSelected
+                      ? AppColors.primaryBlue
+                      : Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
                 ),
               ),
             ),
@@ -326,283 +610,173 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildEnhancedStats(bool isSmallScreen) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                'Today\'s Visitors',
-                todaysVisitors.toString(),
-                Icons.people_rounded,
-                AppColors.success,
-                isSmallScreen,
-                '+12%',
-                true,
-              ),
-            ),
-            SizedBox(width: 16),
-            Expanded(
-              child: _buildStatCard(
-                'Currently In',
-                currentlyIn.toString(),
-                Icons.person_pin_circle_rounded,
-                AppColors.warning,
-                isSmallScreen,
-                '',
-                false,
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                'Total Visitors',
-                totalVisitors.toString(),
-                Icons.groups_rounded,
-                AppColors.primaryBlue,
-                isSmallScreen,
-                '+5%',
-                true,
-              ),
-            ),
-            SizedBox(width: 16),
-            Expanded(
-              child: _buildStatCard(
-                'Checked Out Today',
-                checkedOutToday.toString(),
-                Icons.logout_rounded,
-                AppColors.error,
-                isSmallScreen,
-                '',
-                false,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatCard(String title, String count, IconData icon, Color color,
+  Widget _buildModernStatCard(String title, String count, IconData icon, Color color,
       bool isSmallScreen, String trend, bool showTrend) {
-    return Container(
-      padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: color.withOpacity(0.3),
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 8,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: isSmallScreen ? 20 : 24,
-                ),
-              ),
-              if (showTrend && trend.isNotEmpty)
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    trend,
-                    style: GoogleFonts.lexend(
-                      fontSize: 10,
-                      color: AppColors.success,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          SizedBox(height: 12),
-          Text(
-            count,
-            style: GoogleFonts.lexend(
-              fontSize: isSmallScreen ? 24 : 28,
-              fontWeight: FontWeight.w800,
-              color: color,
-            ),
-          ),
-          SizedBox(height: 4),
-          Text(
-            title,
-            style: GoogleFonts.lexend(
-              fontSize: isSmallScreen ? 12 : 14,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title, bool isSmallScreen) {
-    return Text(
-      title,
-      style: GoogleFonts.lexend(
-        fontSize: isSmallScreen ? 20 : 24,
-        fontWeight: FontWeight.w700,
-        color: Colors.grey[800],
-      ),
-    );
-  }
-
-  Widget _buildMenuGrid(bool isSmallScreen) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: isSmallScreen ? 16 : 24,
-      mainAxisSpacing: isSmallScreen ? 16 : 24,
-      childAspectRatio: 1.1,
-      children: [
-        _buildMenuCard(
-          context,
-          'New Visitor',
-          'Register a new visitor',
-          Icons.person_add_alt_1_rounded,
-          AppColors.success,
-          '/visitor-registration',
-          isSmallScreen,
-        ),
-        _buildMenuCard(
-          context,
-          'Check Out',
-          'Check out visitor',
-          Icons.logout_rounded,
-          AppColors.warning,
-          '/check-out',
-          isSmallScreen,
-        ),
-        _buildMenuCard(
-          context,
-          'Student Verification',
-          'Verify student identity',
-          Icons.verified_user_rounded,
-          AppColors.info,
-          '/lost-id-verification',
-          isSmallScreen,
-        ),
-        _buildMenuCard(
-          context,
-          'Settings',
-          'App settings and preferences',
-          Icons.settings_rounded,
-          AppColors.error,
-          '/settings',
-          isSmallScreen,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMenuCard(BuildContext context, String title, String subtitle,
-      IconData icon, Color color, String route, bool isSmallScreen) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
         onTap: () {
           HapticFeedback.lightImpact();
-          Navigator.pushNamed(context, route);
+          if (title == 'Today\'s Visitors') {
+            Navigator.pushNamed(context, '/visitor-list');
+          }
         },
-        borderRadius: BorderRadius.circular(25),
-        splashColor: color.withOpacity(0.2),
-        highlightColor: color.withOpacity(0.1),
         child: Container(
+          padding: EdgeInsets.all(isSmallScreen ? 20 : 24),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(25),
-            border: Border.all(
-              color: color.withOpacity(0.3),
-              width: 2,
-            ),
+            color: isDarkMode ? Color(0xFF1E293B) : Colors.white,
+            borderRadius: BorderRadius.circular(24), // Increased border radius
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 8,
+                color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.1),
+                blurRadius: 20, // Increased blur
+                offset: Offset(0, 8), // Increased offset for more elevation
+                spreadRadius: -5,
+              ),
+            ],
+            border: isDarkMode 
+                ? Border.all(color: Color(0xFF334155), width: 1)
+                : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(isDarkMode ? 0.2 : 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: color,
+                      size: isSmallScreen ? 22 : 26, // Slightly larger icon
+                    ),
+                  ),
+                  if (showTrend && trend.isNotEmpty)
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Color(0xFF10B981).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.trending_up_rounded, 
+                              size: 16, 
+                              color: Color(0xFF10B981)),
+                          SizedBox(width: 6),
+                          Text(
+                            trend,
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: Color(0xFF10B981),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AnimatedCount(
+                    count: int.parse(count),
+                    style: GoogleFonts.poppins(
+                      fontSize: isSmallScreen ? 30 : 34, // Larger font
+                      fontWeight: FontWeight.w800,
+                      color: isDarkMode ? Colors.white : Color(0xFF0F172A),
+                      height: 1.1,
+                    ),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    title,
+                    style: GoogleFonts.inter(
+                      fontSize: isSmallScreen ? 14 : 15, // Slightly larger
+                      color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernActionCard(String title, String subtitle, IconData icon,
+      Color color, String route, bool isSmallScreen) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.mediumImpact();
+          Navigator.pushNamed(context, route);
+        },
+        child: AnimatedContainer(
+          duration: Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
+          decoration: BoxDecoration(
+            color: isDarkMode ? Color(0xFF1E293B) : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
                 offset: Offset(0, 4),
               ),
             ],
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: isSmallScreen ? 60 : 70,
-                height: isSmallScreen ? 60 : 70,
+                width: isSmallScreen ? 44 : 50,
+                height: isSmallScreen ? 44 : 50,
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: color.withOpacity(0.3),
-                    width: 2,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      color.withOpacity(0.2),
+                      color.withOpacity(0.4),
+                    ],
                   ),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
                   icon,
-                  size: isSmallScreen ? 30 : 35,
+                  size: isSmallScreen ? 22 : 26,
                   color: color,
                 ),
               ),
-              SizedBox(height: isSmallScreen ? 12 : 16),
+              SizedBox(height: 16),
               Text(
                 title,
-                style: GoogleFonts.lexend(
+                style: GoogleFonts.poppins(
                   fontSize: isSmallScreen ? 16 : 18,
                   fontWeight: FontWeight.w700,
-                  color: Colors.grey[800],
+                  color: isDarkMode ? Colors.white : Color(0xFF0F172A),
                 ),
-                textAlign: TextAlign.center,
               ),
               SizedBox(height: 4),
               Text(
                 subtitle,
-                style: GoogleFonts.lexend(
-                  fontSize: isSmallScreen ? 11 : 12,
-                  color: Colors.grey[500],
+                style: GoogleFonts.inter(
+                  fontSize: isSmallScreen ? 12 : 13,
+                  color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
                   fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              SizedBox(height: 8),
-              Container(
-                width: 30,
-                height: 3,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.6),
-                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ],
@@ -612,19 +786,132 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildFloatingActionButton() {
-    return FloatingActionButton(
-      onPressed: () {
-        HapticFeedback.mediumImpact();
-        Navigator.pushNamed(context, '/visitor-registration');
-      },
-      backgroundColor: AppColors.primaryBlue,
-      child: Icon(
-        Icons.add,
-        size: 28,
-        color: Colors.white,
+  Widget _buildRecentVisitors(List<Visitor> visitors, bool isSmallScreen) {
+    if (visitors.isEmpty) {
+      return Container(
+        padding: EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isDarkMode ? Color(0xFF1E293B) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.people_outline_rounded, size: 40, color: Colors.grey),
+            SizedBox(height: 10),
+            Text(
+              'No recent visitors',
+              style: GoogleFonts.inter(
+                color: Colors.grey,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDarkMode ? Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
       ),
-      elevation: 0,
+      child: Column(
+        children: visitors.map((visitor) {
+          return ListTile(
+            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            leading: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppColors.primaryBlue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.person_rounded,
+                color: AppColors.primaryBlue,
+              ),
+            ),
+            title: Text(
+              visitor.name,
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.w600,
+                color: isDarkMode ? Colors.white : Colors.black,
+              ),
+            ),
+            subtitle: Text(
+              visitor.purpose ?? '',
+              style: GoogleFonts.inter(
+                color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
+              ),
+            ),
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  visitor.checkInTime?.format(context) ?? 'Now',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
+                  ),
+                ),
+                SizedBox(height: 4),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: (visitor.checkedOut ?? false)
+                        ? Colors.green.withOpacity(0.1)
+                        : Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    (visitor.checkedOut ?? false) ? 'Checked Out' : 'Checked In',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      color: (visitor.checkedOut ?? false) ? Colors.green : Colors.orange,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            onTap: () {
+              Navigator.pushNamed(
+                context,
+                '/visitor-details',
+                arguments: visitor,
+              );
+            },
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildFloatingActionButton() {
+    return Container(
+      height: 60,
+      width: 60,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryBlue.withOpacity(0.3),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: FloatingActionButton(
+        onPressed: () {
+          HapticFeedback.mediumImpact();
+          _confettiController.play();
+          Navigator.pushNamed(context, '/visitor-registration');
+        },
+        backgroundColor: AppColors.primaryBlue,
+        elevation: 0,
+        child: Icon(Icons.add_rounded, size: 28, color: Colors.white),
+      ),
     );
   }
 
@@ -635,28 +922,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isDarkMode', isDarkMode);
   }
-Future<void> _refreshData() async {
-  final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
 
-  await visitorProvider.loadVisitors();
-  await visitorProvider.logVisitCount();
+  Future<void> _refreshData() async {
+    setState(() {
+      _isRefreshing = true;
+    });
 
-  final now = DateTime.now();
+    final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
+    await visitorProvider.loadVisitors();
+    await visitorProvider.logVisitCount();
 
-  // Just use the server values directly from VisitorProvider
-  setState(() {
-    todaysVisitors = visitorProvider.todaysVisitCount;
-    currentlyIn = visitorProvider.checkedInCount;
-    checkedOutToday = visitorProvider.checkedOutCount;
-    totalVisitors = visitorProvider.totalVisitCount;
-  });
+    setState(() {
+      todaysVisitors = visitorProvider.todaysVisitCount;
+      currentlyIn = visitorProvider.checkedInCount;
+      checkedOutToday = visitorProvider.checkedOutCount;
+      totalVisitors = visitorProvider.totalVisitCount;
+      _isRefreshing = false;
+    });
 
-  final avg = totalVisitors ~/ 30;
-  print('📊 Stats for $deviceGate on ${now.day}/${now.month}/${now.year} at ${now.hour}:${now.minute} EAT — '
-      'Today: $todaysVisitors, Currently In: $currentlyIn, Checked Out Today: $checkedOutToday, '
-      'Total: $totalVisitors, Avg/day: $avg');
-}
-
+    // Play confetti if today's visitors exceed a threshold
+    if (todaysVisitors > 20) {
+      _confettiController.play();
+    }
+  }
 
   void _onBottomNavTap(int index) {
     setState(() {
@@ -679,5 +967,80 @@ Future<void> _refreshData() async {
         Navigator.pushNamed(context, '/settings');
         break;
     }
+  }
+}
+
+class AnimatedCount extends StatefulWidget {
+  final int count;
+  final TextStyle? style;
+
+  const AnimatedCount({
+    required this.count,
+    this.style,
+  });
+
+  @override
+  _AnimatedCountState createState() => _AnimatedCountState();
+}
+
+class _AnimatedCountState extends State<AnimatedCount> with TickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<int> _animation;
+  int _previousCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _previousCount = widget.count;
+    _controller = AnimationController(
+      duration: Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    
+    _animation = IntTween(
+      begin: _previousCount,
+      end: widget.count,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+    
+    _controller.forward();
+  }
+
+  @override
+  void didUpdateWidget(AnimatedCount oldWidget) {
+    if (oldWidget.count != widget.count) {
+      _previousCount = _animation.value;
+      _controller.reset();
+      _animation = IntTween(
+        begin: _previousCount,
+        end: widget.count,
+      ).animate(CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOut,
+      ));
+      _controller.forward();
+    }
+    super.didUpdateWidget(oldWidget);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Text(
+          _animation.value.toString(),
+          style: widget.style,
+        );
+      },
+    );
   }
 }

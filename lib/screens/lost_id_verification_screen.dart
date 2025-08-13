@@ -9,10 +9,12 @@ import '../providers/visitor_provider.dart';
 
 class IdentityVerificationScreen extends StatefulWidget {
   @override
-  _IdentityVerificationScreenState createState() => _IdentityVerificationScreenState();
+  _IdentityVerificationScreenState createState() =>
+      _IdentityVerificationScreenState();
 }
 
-class _IdentityVerificationScreenState extends State<IdentityVerificationScreen> {
+class _IdentityVerificationScreenState
+    extends State<IdentityVerificationScreen> {
   final _formKey = GlobalKey<FormState>();
   final _studentIdController = TextEditingController();
   final _usernameController = TextEditingController();
@@ -63,13 +65,16 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('verification_type', _verificationType);
-      if (_verificationType == 'student' && _studentIdController.text.isNotEmpty) {
+      if (_verificationType == 'student' &&
+          _studentIdController.text.isNotEmpty) {
         await prefs.setString('last_student_id', _studentIdController.text);
       }
-      if (_verificationType == 'username' && _usernameController.text.isNotEmpty) {
+      if (_verificationType == 'username' &&
+          _usernameController.text.isNotEmpty) {
         await prefs.setString('last_username', _usernameController.text);
       }
-      if (_verificationType == 'staffNo' && _staffNoController.text.isNotEmpty) {
+      if (_verificationType == 'staffNo' &&
+          _staffNoController.text.isNotEmpty) {
         await prefs.setString('last_staff_no', _staffNoController.text);
       }
     } catch (e) {
@@ -78,13 +83,18 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
   }
 
   // Save successful verification to history
-  Future<void> _saveVerificationHistory(Map<String, dynamic> verificationData) async {
+  Future<void> _saveVerificationHistory(
+    Map<String, dynamic> verificationData,
+  ) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final historyList = prefs.getStringList('verification_history') ?? [];
       final newEntry = {
         'type': verificationData['type'],
-        'id': verificationData['type'] == 'student' ? verificationData['studentId'] : verificationData['staffNo'],
+        'id':
+            verificationData['type'] == 'student'
+                ? verificationData['studentId']
+                : verificationData['staffNo'],
         'name': verificationData['name'],
         'timestamp': DateTime.now().toIso8601String(),
       };
@@ -104,12 +114,14 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
       final prefs = await SharedPreferences.getInstance();
       final historyList = prefs.getStringList('verification_history') ?? [];
       setState(() {
-        _recentVerifications = historyList.map((entry) {
-          final decoded = jsonDecode(entry);
-          return <String, dynamic>{
-            'display': '${decoded['type']} ID: ${decoded['id']} (${decoded['name']})',
-          };
-        }).toList();
+        _recentVerifications =
+            historyList.map((entry) {
+              final decoded = jsonDecode(entry);
+              return <String, dynamic>{
+                'display':
+                    '${decoded['type']} ID: ${decoded['id']} (${decoded['name']})',
+              };
+            }).toList();
       });
     } catch (e) {
       print('Error loading recent verifications: $e');
@@ -150,14 +162,23 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
 
       try {
         await _saveData();
-        final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
+        final visitorProvider = Provider.of<VisitorProvider>(
+          context,
+          listen: false,
+        );
         Map<String, dynamic> result;
         if (_verificationType == 'student') {
-          result = await visitorProvider.verifyIdentity(studentId: _studentIdController.text);
+          result = await visitorProvider.verifyIdentity(
+            studentId: _studentIdController.text,
+          );
         } else if (_verificationType == 'username') {
-          result = await visitorProvider.verifyIdentity(username: _usernameController.text);
+          result = await visitorProvider.verifyIdentity(
+            username: _usernameController.text,
+          );
         } else {
-          result = await visitorProvider.verifyIdentity(staffNo: _staffNoController.text);
+          result = await visitorProvider.verifyIdentity(
+            staffNo: _staffNoController.text,
+          );
         }
 
         if (result['success']) {
@@ -188,19 +209,23 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
 
           setState(() {
             _identityData = identityData;
-            _successMessage = result['message'] ?? '${result['type']} verified successfully';
+            _successMessage =
+                result['message'] ?? '${result['type']} verified successfully';
           });
 
           await _saveVerificationHistory(identityData);
           await _loadRecentVerifications();
         } else {
           setState(() {
-            _errorMessage = result['message'] ?? 'Failed to verify ${_verificationType == 'student' ? 'student' : 'staff'}';
+            _errorMessage =
+                result['message'] ??
+                'Failed to verify ${_verificationType == 'student' ? 'student' : 'staff'}';
           });
         }
       } catch (e) {
         setState(() {
-          _errorMessage = 'Error verifying ${_verificationType == 'student' ? 'student ID' : 'staff'}: $e';
+          _errorMessage =
+              'Error verifying ${_verificationType == 'student' ? 'student ID' : 'staff'}: $e';
         });
       } finally {
         setState(() {
@@ -262,7 +287,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             _buildInfoRow('Student ID:', _identityData!['studentId']),
             _buildInfoRow('Courses:', _identityData!['courses']),
             _buildInfoRow('Faculties:', _identityData!['faculties']),
-            
+
             _buildInfoRow('Status:', _identityData!['status']),
             _buildInfoRow('ID Expiry:', _identityData!['idExpiry']),
           ] else ...[
@@ -273,7 +298,12 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
           SizedBox(height: 16),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context, _identityData!['type'] == 'student' ? _identityData!['studentId'] : _identityData!['staffNo']);
+              Navigator.pop(
+                context,
+                _identityData!['type'] == 'student'
+                    ? _identityData!['studentId']
+                    : _identityData!['staffNo'],
+              );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primaryBlue,
@@ -316,10 +346,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
           Expanded(
             child: Text(
               value,
-              style: GoogleFonts.lexend(
-                fontSize: 14,
-                color: Colors.grey[800],
-              ),
+              style: GoogleFonts.lexend(fontSize: 14, color: Colors.grey[800]),
             ),
           ),
         ],
@@ -371,24 +398,28 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             ],
           ),
           SizedBox(height: 12),
-          ..._recentVerifications.take(5).map((verification) => Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Icon(Icons.history, size: 16, color: Colors.grey[500]),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        verification['display'],
-                        style: GoogleFonts.lexend(
-                          fontSize: 12,
-                          color: Colors.grey[600],
+          ..._recentVerifications
+              .take(5)
+              .map(
+                (verification) => Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.history, size: 16, color: Colors.grey[500]),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          verification['display'],
+                          style: GoogleFonts.lexend(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              )),
+              ),
         ],
       ),
     );
@@ -430,26 +461,32 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             onPressed: () {
               showDialog(
                 context: context,
-                builder: (context) => AlertDialog(
-                  title: Text('Settings', style: GoogleFonts.lexend()),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ListTile(
-                        leading: Icon(Icons.delete_forever),
-                        title: Text('Clear All Data', style: GoogleFonts.lexend()),
-                        onTap: () {
-                          Navigator.pop(context);
-                          _clearAllSavedData();
-                        },
+                builder:
+                    (context) => AlertDialog(
+                      title: Text('Settings', style: GoogleFonts.lexend()),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListTile(
+                            leading: Icon(Icons.delete_forever),
+                            title: Text(
+                              'Clear All Data',
+                              style: GoogleFonts.lexend(),
+                            ),
+                            onTap: () {
+                              Navigator.pop(context);
+                              _clearAllSavedData();
+                            },
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
+                    ),
               );
             },
           ),
-        ], onBack: () {  },
+        ],
+        onBack: () {},
+        isDarkMode: false,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -481,22 +518,41 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                   decoration: BoxDecoration(
                     color: AppColors.primaryBlue.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.primaryBlue.withOpacity(0.2)),
+                    border: Border.all(
+                      color: AppColors.primaryBlue.withOpacity(0.2),
+                    ),
                   ),
                   child: DropdownButtonFormField<String>(
                     value: _verificationType,
                     decoration: InputDecoration(
                       labelText: 'Verification Type',
-                      labelStyle: GoogleFonts.lexend(color: AppColors.primaryBlue),
+                      labelStyle: GoogleFonts.lexend(
+                        color: AppColors.primaryBlue,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(color: Colors.grey[300]!),
                       ),
                     ),
                     items: [
-                      DropdownMenuItem(value: 'student', child: Text('Student ID', style: GoogleFonts.lexend())),
-                      DropdownMenuItem(value: 'username', child: Text('Staff Username', style: GoogleFonts.lexend())),
-                      DropdownMenuItem(value: 'staffNo', child: Text('Staff Number', style: GoogleFonts.lexend())),
+                      DropdownMenuItem(
+                        value: 'student',
+                        child: Text('Student ID', style: GoogleFonts.lexend()),
+                      ),
+                      DropdownMenuItem(
+                        value: 'username',
+                        child: Text(
+                          'Staff Username',
+                          style: GoogleFonts.lexend(),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'staffNo',
+                        child: Text(
+                          'Staff Number',
+                          style: GoogleFonts.lexend(),
+                        ),
+                      ),
                     ],
                     onChanged: (value) {
                       setState(() {
@@ -539,7 +595,10 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                           keyboardType: TextInputType.number,
                           decoration: InputDecoration(
                             hintText: 'Enter 6 or 7-digit ID (e.g., 123456)',
-                            prefixIcon: Icon(Icons.badge, color: AppColors.primaryBlue),
+                            prefixIcon: Icon(
+                              Icons.badge,
+                              color: AppColors.primaryBlue,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(color: Colors.grey[300]!),
@@ -550,15 +609,24 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: AppColors.primaryBlue, width: 2),
+                              borderSide: BorderSide(
+                                color: AppColors.primaryBlue,
+                                width: 2,
+                              ),
                             ),
                             errorBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: AppColors.error, width: 2),
+                              borderSide: BorderSide(
+                                color: AppColors.error,
+                                width: 2,
+                              ),
                             ),
                             filled: true,
                             fillColor: Colors.grey[50],
-                            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 16,
+                            ),
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
@@ -586,7 +654,10 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                           keyboardType: TextInputType.text,
                           decoration: InputDecoration(
                             hintText: 'Enter staff username',
-                            prefixIcon: Icon(Icons.person, color: AppColors.primaryBlue),
+                            prefixIcon: Icon(
+                              Icons.person,
+                              color: AppColors.primaryBlue,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(color: Colors.grey[300]!),
@@ -597,15 +668,24 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: AppColors.primaryBlue, width: 2),
+                              borderSide: BorderSide(
+                                color: AppColors.primaryBlue,
+                                width: 2,
+                              ),
                             ),
                             errorBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: AppColors.error, width: 2),
+                              borderSide: BorderSide(
+                                color: AppColors.error,
+                                width: 2,
+                              ),
                             ),
                             filled: true,
                             fillColor: Colors.grey[50],
-                            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 16,
+                            ),
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
@@ -630,7 +710,10 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                           keyboardType: TextInputType.text,
                           decoration: InputDecoration(
                             hintText: 'Enter staff number',
-                            prefixIcon: Icon(Icons.badge, color: AppColors.primaryBlue),
+                            prefixIcon: Icon(
+                              Icons.badge,
+                              color: AppColors.primaryBlue,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(color: Colors.grey[300]!),
@@ -641,15 +724,24 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: AppColors.primaryBlue, width: 2),
+                              borderSide: BorderSide(
+                                color: AppColors.primaryBlue,
+                                width: 2,
+                              ),
                             ),
                             errorBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: AppColors.error, width: 2),
+                              borderSide: BorderSide(
+                                color: AppColors.error,
+                                width: 2,
+                              ),
                             ),
                             filled: true,
                             fillColor: Colors.grey[50],
-                            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 16,
+                            ),
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
@@ -674,23 +766,27 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                                 ),
                                 elevation: 2,
                               ),
-                              child: _isLoading
-                                  ? SizedBox(
-                                      height: 20,
-                                      width: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              child:
+                                  _isLoading
+                                      ? SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Colors.white,
+                                              ),
+                                        ),
+                                      )
+                                      : Text(
+                                        'Verify ${_verificationType}',
+                                        style: GoogleFonts.lexend(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
-                                    )
-                                  : Text(
-                                      'Verify ${_verificationType}',
-                                      style: GoogleFonts.lexend(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
                             ),
                           ),
                           if (_identityData != null) ...[
@@ -699,7 +795,10 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                               onPressed: _clearForm,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.grey[600],
-                                padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                                padding: EdgeInsets.symmetric(
+                                  vertical: 16,
+                                  horizontal: 20,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -726,7 +825,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                     decoration: BoxDecoration(
                       color: AppColors.error.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                      border: Border.all(
+                        color: AppColors.error.withOpacity(0.3),
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -756,7 +857,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                     decoration: BoxDecoration(
                       color: AppColors.success.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.success.withOpacity(0.3)),
+                      border: Border.all(
+                        color: AppColors.success.withOpacity(0.3),
+                      ),
                     ),
                     child: Row(
                       children: [

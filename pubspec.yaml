@@ -28,6 +28,9 @@ dependencies:
   image: ^4.5.4
   google_ml_kit: ^0.20.0
   flutter_typeahead: ^5.2.0
+  flutter_secure_storage: ^9.2.4
+  liquid_swipe: ^3.1.0
+  confetti: ^0.8.0
 
 dev_dependencies:
   flutter_test:

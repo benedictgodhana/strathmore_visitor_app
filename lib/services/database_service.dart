@@ -92,7 +92,9 @@ class DatabaseService {
     await db.execute('''
     CREATE TABLE visitor_tags (
       id TEXT PRIMARY KEY,
-      name TEXT
+      visitor_gate_id TEXT,
+      tag_number TEXT,
+      is_assigned INTEGER,
     )
     ''');
 

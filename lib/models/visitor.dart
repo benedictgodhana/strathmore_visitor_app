@@ -84,6 +84,14 @@ class Visitor {
     );
   }
 
+  get tagNumber => null;
+
+  get checkInTime => null;
+
+  bool? get checkedOut => null;
+
+  String? get purpose => null;
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -110,4 +118,6 @@ class Visitor {
       'created_at': createdAt?.toIso8601String(),
     }..removeWhere((key, value) => value == null);
   }
+
+  copyWith({required String action, required String time}) {}
 }
