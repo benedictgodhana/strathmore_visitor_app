@@ -31,9 +31,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final PageController _pageController = PageController();
 
   // Data
-  int todaysVisitors = 0;
+  int todaysTotalCount = 0;
   int currentlyIn = 0;
-  int totalVisitors = 0;
   int checkedOutToday = 0;
   bool isDarkMode = false;
   String selectedTimeRange = 'Today';
@@ -108,7 +107,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       });
     }
   }
- Future<void> _loadTokenFromPreferences() async {
+
+  Future<void> _loadTokenFromPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _token = prefs.getString('token');
@@ -251,59 +251,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       sliver:
                           _isRefreshing
                               ? SliverToBoxAdapter(
-                                child: Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                              )
-                              : SliverGrid(
-                                gridDelegate:
-                                    SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 2,
-                                      mainAxisSpacing: 16,
-                                      crossAxisSpacing: 16,
-                                      childAspectRatio: 1.1,
-                                    ),
-                                delegate: SliverChildBuilderDelegate(
-                                  (context, index) => _buildModernStatCard(
-                                    index == 0
-                                        ? 'Today\'s Visitors'
-                                        : index == 1
-                                        ? 'Currently In'
-                                        : index == 2
-                                        ? 'Total Visitors'
-                                        : 'Checked Out',
-                                    index == 0
-                                        ? todaysVisitors.toString()
-                                        : index == 1
-                                        ? currentlyIn.toString()
-                                        : index == 2
-                                        ? totalVisitors.toString()
-                                        : checkedOutToday.toString(),
-                                    index == 0
-                                        ? Icons.people_alt_rounded
-                                        : index == 1
-                                        ? Icons.person_pin_circle_rounded
-                                        : index == 2
-                                        ? Icons.groups_rounded
-                                        : Icons.logout_rounded,
-                                    index == 0
-                                        ? Color(0xFF10B981)
-                                        : index == 1
-                                        ? Color(0xFFF59E0B)
-                                        : index == 2
-                                        ? AppColors.primaryBlue
-                                        : Color(0xFFEF4444),
-                                    isSmallScreen,
-                                    index == 0
-                                        ? '+12%'
-                                        : index == 2
-                                        ? '+5%'
-                                        : '',
-                                    index == 0 || index == 2,
+                                  child: Center(
+                                    child: CircularProgressIndicator(),
                                   ),
-                                  childCount: 4,
+                                )
+                              : SliverGrid(
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    mainAxisSpacing: 16,
+                                    crossAxisSpacing: 16,
+                                    childAspectRatio: 1.1,
+                                  ),
+                                  delegate: SliverChildBuilderDelegate(
+                                    (context, index) => _buildModernStatCard(
+                                      index == 0
+                                          ? 'Today\'s Total'
+                                          : index == 1
+                                              ? 'Currently In'
+                                              : 'Checked Out Today',
+                                      index == 0
+                                          ? todaysTotalCount.toString()
+                                          : index == 1
+                                              ? currentlyIn.toString()
+                                              : checkedOutToday.toString(),
+                                      index == 0
+                                          ? Icons.people_alt_rounded
+                                          : index == 1
+                                              ? Icons.person_pin_circle_rounded
+                                              : Icons.logout_rounded,
+                                      index == 0
+                                          ? Color(0xFF10B981)
+                                          : index == 1
+                                              ? Color(0xFFF59E0B)
+                                              : Color(0xFFEF4444),
+                                      isSmallScreen,
+                                      index == 0 ? '+12%' : '',
+                                      index == 0,
+                                    ),
+                                    childCount: 3,
+                                  ),
                                 ),
-                              ),
                     ),
                     SliverToBoxAdapter(
                       child: Padding(
@@ -421,60 +409,60 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         child:
                             _token == null
                                 ? Container(
-                                  padding: EdgeInsets.all(20),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        isDarkMode
-                                            ? Color(0xFF1E293B)
-                                            : Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Icon(
-                                        Icons.lock_outline,
-                                        size: 40,
-                                        color: Colors.grey,
-                                      ),
-                                      SizedBox(height: 10),
-                                      Text(
-                                        'Please log in to view visitors',
-                                        style: GoogleFonts.afacad(
+                                    padding: EdgeInsets.all(20),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          isDarkMode
+                                              ? Color(0xFF1E293B)
+                                              : Colors.white,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.lock_outline,
+                                          size: 40,
                                           color: Colors.grey,
-                                          fontWeight: FontWeight.w500,
                                         ),
-                                      ),
-                                      SizedBox(height: 10),
-                                      ElevatedButton(
-                                        onPressed: () {
-                                          Navigator.pushNamedAndRemoveUntil(
-                                            context,
-                                            '/login',
-                                            (route) => false,
-                                          );
-                                        },
-                                        child: Text('Go to Login'),
-                                      ),
-                                    ],
-                                  ),
-                                )
+                                        SizedBox(height: 10),
+                                        Text(
+                                          'Please log in to view visitors',
+                                          style: GoogleFonts.afacad(
+                                            color: Colors.grey,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        SizedBox(height: 10),
+                                        ElevatedButton(
+                                          onPressed: () {
+                                            Navigator.pushNamedAndRemoveUntil(
+                                              context,
+                                              '/login',
+                                              (route) => false,
+                                            );
+                                          },
+                                          child: Text('Go to Login'),
+                                        ),
+                                      ],
+                                    ),
+                                  )
                                 : Consumer<VisitorProvider>(
-                                  builder: (context, visitorProvider, child) {
-                                    final recentVisitors =
-                                        visitorProvider.visitors
-                                            .where(
-                                              (visitor) =>
-                                                  visitor.gate == deviceGate ||
-                                                  visitor.gateId == gateId,
-                                            )
-                                            .take(3)
-                                            .toList();
-                                    return _buildRecentVisitors(
-                                      recentVisitors,
-                                      isSmallScreen,
-                                    );
-                                  },
-                                ),
+                                    builder: (context, visitorProvider, child) {
+                                      final recentVisitors =
+                                          visitorProvider.visitors
+                                              .where(
+                                                (visitor) =>
+                                                    visitor.gate == deviceGate ||
+                                                    visitor.gateId == gateId,
+                                              )
+                                              .take(3)
+                                              .toList();
+                                      return _buildRecentVisitors(
+                                        recentVisitors,
+                                        isSmallScreen,
+                                      );
+                                    },
+                                  ),
                       ),
                     ),
                     SliverToBoxAdapter(child: SizedBox(height: 100)),
@@ -585,7 +573,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                     SizedBox(width: 8),
                     Text(
-                      'Online • ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
+                      'Online • ${DateFormat('HH:mm').format(DateTime.now().toLocal())}',
                       style: GoogleFonts.afacad(
                         color: Colors.white,
                         fontSize: 14,
@@ -612,7 +600,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   Text(
-                    '$todaysVisitors visitors',
+                    '$todaysTotalCount visitors',
                     style: GoogleFonts.afacad(
                       color: Colors.white,
                       fontSize: 14,
@@ -625,7 +613,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: LinearProgressIndicator(
-                  value: todaysVisitors / (todaysVisitors + 10).clamp(0.0, 1.0),
+                  value: todaysTotalCount / (todaysTotalCount + 10).clamp(0.0, 1.0),
                   backgroundColor: Colors.white.withOpacity(0.2),
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   minHeight: 8,
@@ -675,12 +663,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 boxShadow:
                     isSelected
                         ? [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: Offset(0, 4),
-                          ),
-                        ]
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: Offset(0, 4),
+                            ),
+                          ]
                         : [],
               ),
               child: Text(
@@ -712,7 +700,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: GestureDetector(
         onTap: () {
           HapticFeedback.lightImpact();
-          if (title == 'Today\'s Visitors') {
+          if (title == 'Today\'s Total') {
             Navigator.pushNamed(context, '/visitor-list');
           }
         },
@@ -946,7 +934,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      visitor.hadAppointment ?? 'No appointment',
+                      (visitor.hadAppointment ?? false) ? 'Appointment' : 'No appointment',
                       style: GoogleFonts.afacad(
                         color:
                             isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
@@ -1050,13 +1038,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     await prefs.setBool('isDarkMode', isDarkMode);
   }
 
-  // Dummy implementation for _loadGates to resolve the error.
   Future<void> _loadGates() async {
     // TODO: Implement actual gate loading logic if needed.
     await Future.delayed(Duration(milliseconds: 100));
   }
 
- Future<void> _refreshData() async {
+  Future<void> _refreshData() async {
     // Check if token, gateId, or deviceGate is missing
     if (_token == null || gateId == null || deviceGate == null) {
       debugPrint('⚠️ token, gateId, or deviceGate is null, cannot refresh data');
@@ -1119,20 +1106,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       await _loadGates();
       visitorProvider.setAuthData(_token!, gateId!, deviceGate ?? 'Gate A');
       await visitorProvider.loadCheckedInVisitors();
-      await visitorProvider.logVisitCount();
+      await visitorProvider.logVisitCount(timeRange: selectedTimeRange);
       if (mounted) {
         setState(() {
-          todaysVisitors = visitorProvider.todaysVisitCount;
+          todaysTotalCount = visitorProvider.todaysTotalCount;
           currentlyIn = visitorProvider.checkedInCount;
           checkedOutToday = visitorProvider.checkedOutCount;
-          totalVisitors = visitorProvider.totalVisitCount;
           _isRefreshing = false;
         });
 
         final prefs = await SharedPreferences.getInstance();
-        if (todaysVisitors >= (prefs.getInt('confettiThreshold') ?? 20)) {
-          // Assume _confettiController.play() is defined
-          // _confettiController.play();
+        if (todaysTotalCount >= (prefs.getInt('confettiThreshold') ?? 20)) {
+          _confettiController.play();
         }
       }
     } catch (e) {
@@ -1163,9 +1148,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         );
       }
     }
-  
+  }
 
-  }  void _onBottomNavTap(int index) {
+  void _onBottomNavTap(int index) {
     final navRoutes = {
       0: null, // Home
       1: '/visitor-registration',

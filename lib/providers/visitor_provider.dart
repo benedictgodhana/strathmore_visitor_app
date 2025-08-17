@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/visitor.dart';
 import '../utils/constants.dart';
 
+/// Exception for authentication-related errors
 class VisitorAuthException implements Exception {
   final String message;
   VisitorAuthException(this.message);
@@ -12,6 +13,7 @@ class VisitorAuthException implements Exception {
   String toString() => message;
 }
 
+/// Exception for validation-related errors
 class VisitorValidationException implements Exception {
   final String message;
   VisitorValidationException(this.message);
@@ -19,6 +21,15 @@ class VisitorValidationException implements Exception {
   String toString() => message;
 }
 
+/// Exception for network-related errors
+class VisitorNetworkException implements Exception {
+  final String message;
+  VisitorNetworkException(this.message);
+  @override
+  String toString() => message;
+}
+
+/// Manages visitor-related data and operations
 class VisitorProvider extends ChangeNotifier {
   List<Visitor> _visitors = [];
   List<Map<String, String>> _gates = [];
@@ -28,10 +39,10 @@ class VisitorProvider extends ChangeNotifier {
   String? _token;
   String? _deviceGate;
   String? _gateId;
-  int _totalVisitCount = 0;
-  int _todaysVisitCount = 0;
   int _checkedInCount = 0;
   int _checkedOutCount = 0;
+  int _todaysTotalCount = 0;
+
   Map<String, String>? _gateMap;
   String? _userRole;
   String? _userPosition;
@@ -43,6 +54,7 @@ class VisitorProvider extends ChangeNotifier {
   bool _isDisposed = false;
   bool _isRefreshing = false;
 
+  // Getters
   List<Visitor> get visitors => _visitors;
   List<Map<String, String>> get gates =>
       _gates.isNotEmpty
@@ -65,10 +77,9 @@ class VisitorProvider extends ChangeNotifier {
       _gateId!.isNotEmpty;
   String? get deviceGate => _deviceGate;
   String? get gateId => _gateId;
-  int get totalVisitCount => _totalVisitCount;
-  int get todaysVisitCount => _todaysVisitCount;
   int get checkedInCount => _checkedInCount;
   int get checkedOutCount => _checkedOutCount;
+  int get todaysTotalCount => _todaysTotalCount;
   Map<String, String>? get gateMap => _gateMap;
   String? get userRole => _userRole;
   String? get userPosition => _userPosition;
@@ -77,7 +88,7 @@ class VisitorProvider extends ChangeNotifier {
   String? get userPhone => _userPhone;
   String? get userAvatarUrl => _userAvatarUrl;
 
-  get user => {
+  Map<String, String?> get user => {
     'name': _userName,
     'email': _userEmail,
     'phone': _userPhone,
@@ -101,6 +112,7 @@ class VisitorProvider extends ChangeNotifier {
     }
   }
 
+  /// Retrieves authentication token from SharedPreferences
   Future<String?> _getTokenFromPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -110,16 +122,16 @@ class VisitorProvider extends ChangeNotifier {
           '✅ Retrieved auth token from SharedPreferences: ${token.substring(0, 10)}...',
         );
         return token;
-      } else {
-        debugPrint('⚠️ No valid auth token found in SharedPreferences');
-        return null;
       }
+      debugPrint('⚠️ No valid auth token found in SharedPreferences');
+      return null;
     } catch (e) {
       debugPrint('❌ Error retrieving token from SharedPreferences: $e');
-      return null;
+      throw VisitorAuthException('Failed to retrieve authentication token: $e');
     }
   }
 
+  /// Loads authentication data from SharedPreferences
   Future<void> _loadTokenFromPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -164,10 +176,11 @@ class VisitorProvider extends ChangeNotifier {
       debugPrint('📴 Loaded cached gate: $_deviceGate');
     } catch (e) {
       debugPrint('❌ Error loading token or gateId: $e');
-      throw Exception('Failed to load authentication data');
+      throw VisitorAuthException('Failed to load authentication data: $e');
     }
   }
 
+  /// Debugs SharedPreferences contents
   Future<void> debugSharedPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -186,6 +199,7 @@ class VisitorProvider extends ChangeNotifier {
     }
   }
 
+  /// Validates the current authentication token
   Future<bool> _validateToken() async {
     final token = await _getTokenFromPreferences();
     if (token == null || token.isEmpty) {
@@ -216,33 +230,46 @@ class VisitorProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('🔑 Token validation failed: $e');
-      return false;
+      throw VisitorAuthException('Token validation failed: $e');
     }
   }
-Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idType) async {
+
+  /// Checks if a visitor exists with the given ID number and type
+  Future<Map<String, dynamic>?> checkExistingVisitor(
+    String idNumber,
+    String idType,
+  ) async {
+    if (!_validateInput(idNumber) || !_validateInput(idType)) {
+      throw VisitorValidationException('ID number and type are required');
+    }
+
     try {
       final token = await _getTokenFromPreferences();
       final prefs = await SharedPreferences.getInstance();
       final gateId = prefs.getString('gate_id');
       if (token == null || gateId == null) {
-        debugPrint('⚠️ No authentication token or gate ID found for checking visitor');
-        throw Exception('No authentication token or gate ID found');
+        debugPrint(
+          '⚠️ No authentication token or gate ID found for checking visitor',
+        );
+        throw VisitorAuthException('No authentication token or gate ID found');
       }
 
-      // Validate gateId format
       if (!RegExp(r'^\d+$').hasMatch(gateId)) {
         debugPrint('⚠️ Invalid gate ID format: $gateId');
-        throw Exception('Invalid gate ID format');
+        throw VisitorValidationException('Invalid gate ID format');
       }
 
-      // Validate idNumber and idType
       final validationError = validateIdNumber(idNumber, idType);
       if (validationError != null) {
-        debugPrint('⚠️ Validation error for ID $idNumber ($idType): $validationError');
-        throw Exception(validationError);
+        debugPrint(
+          '⚠️ Validation error for ID $idNumber ($idType): $validationError',
+        );
+        throw VisitorValidationException(validationError);
       }
 
-      debugPrint('📤 Sending check visitor request with token: ${token.substring(0, 10)}..., gate_id: $gateId, idNumber: $idNumber, idType: $idType');
+      debugPrint(
+        '📤 Sending check visitor request with token: ${token.substring(0, 10)}..., gate_id: $gateId, idNumber: $idNumber, idType: $idType',
+      );
 
       final response = await _retryApiCall(
         () => http.post(
@@ -261,101 +288,127 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
         maxRetries: 2,
       );
 
-      debugPrint('📥 Check visitor response: ${response.statusCode}, ${response.body}');
+      debugPrint(
+        '📥 Check visitor response: ${response.statusCode}, ${response.body}',
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['visitor'] != null) {
           final visitor = data['visitor'] as Map<String, dynamic>;
-          // Determine status: 'active' if checked in, 'completed' if checked out
-          final isCheckedIn = data['alreadyCheckedIn'] == true ||
+          final isCheckedIn =
+              data['alreadyCheckedIn'] == true ||
               (visitor['status'] != null && visitor['status'] == 'checked_in');
-          final isCheckedOut = visitor['status'] == 'checked_out' || visitor['check_out_time'] != null;
-          final visitorStatus = isCheckedIn ? 'active' : (isCheckedOut ? 'completed' : 'unknown');
-          
-          // Update response data with computed status
+          final isCheckedOut =
+              visitor['status'] == 'checked_out' ||
+              visitor['check_out_time'] != null;
+          final visitorStatus =
+              isCheckedIn ? 'active' : (isCheckedOut ? 'completed' : 'unknown');
+
           data['alreadyCheckedIn'] = isCheckedIn;
           data['visitorStatus'] = visitorStatus;
 
-          debugPrint('Visitor status: ID=$idNumber, exists=${data['exists']}, alreadyCheckedIn=$isCheckedIn, status=${visitor['status']}, check_out_time=${visitor['check_out_time']}, computedStatus=$visitorStatus');
+          debugPrint(
+            'Visitor status: ID=$idNumber, exists=${data['exists']}, alreadyCheckedIn=$isCheckedIn, status=${visitor['status']}, check_out_time=${visitor['check_out_time']}, computedStatus=$visitorStatus',
+          );
 
-          // Check for empty tag_number in visitor data
           if (visitor['tag'] != null) {
             final tag = visitor['tag'] as Map<String, dynamic>;
             final tagNumber = tag['tag_number']?.toString();
             if (tagNumber == null || tagNumber.isEmpty) {
-              debugPrint('⚠️ Visitor tag has empty tag_number: $tag, using fallback Tag ${tag['id']}');
+              debugPrint(
+                '⚠️ Visitor tag has empty tag_number: $tag, using fallback Tag ${tag['id']}',
+              );
               tag['tag_number'] = 'Tag ${tag['id'] ?? 'Unknown'}';
-            } else {
-              debugPrint('ℹ️ Visitor tag: $tagNumber');
             }
-          } else {
-            debugPrint('⚠️ No tag associated with visitor: $visitor');
           }
-        } else {
-          debugPrint('ℹ️ No visitor data returned for ID $idNumber');
         }
         return data;
       } else if (response.statusCode == 404) {
         debugPrint('ℹ️ No visitor found for ID $idNumber');
-        return {'exists': false, 'visitor': null, 'message': 'No visitor found', 'visitorStatus': 'none'};
+        return {
+          'exists': false,
+          'visitor': null,
+          'message': 'No visitor found',
+          'visitorStatus': 'none',
+        };
       } else if (response.statusCode == 401) {
         debugPrint('❌ Authentication failed: Invalid or expired token');
         await _clearAuthenticationState();
-        throw Exception('Authentication failed: Invalid or expired token.');
+        throw VisitorAuthException(
+          'Authentication failed: Invalid or expired token',
+        );
       } else if (response.statusCode == 419) {
         debugPrint('❌ CSRF token mismatch');
-        throw Exception('CSRF token mismatch. Please contact the administrator.');
+        throw VisitorAuthException('CSRF token mismatch');
       } else if (response.statusCode == 422) {
         final errorData = jsonDecode(response.body);
         final errorMessage = errorData['message'] ?? 'Validation failed';
-        final details = errorData['details']?.toString() ?? 'No details provided';
+        final details =
+            errorData['details']?.toString() ?? 'No details provided';
         debugPrint('❌ Validation error: $errorMessage, Details: $details');
-        throw Exception('$errorMessage: $details');
+        throw VisitorValidationException('$errorMessage: $details');
       }
-      throw Exception('Failed to check visitor: ${response.statusCode} - ${response.body}');
+      throw VisitorNetworkException(
+        'Failed to check visitor: ${response.statusCode} - ${response.body}',
+      );
     } catch (e) {
       debugPrint('❌ Error checking existing visitor: $e');
       rethrow;
     }
   }
 
-
-
+  /// Creates a new visit for an existing visitor
   Future<void> createVisitForExistingVisitor(Map<String, dynamic> visit) async {
     if (_token == null || _gateId == null) {
       debugPrint('⚠️ Cannot create visit: No token or gate ID');
-      throw Exception('Authentication token or gate ID missing');
+      throw VisitorAuthException('Authentication token or gate ID missing');
     }
+
     try {
-      final response = await http.post(
-        Uri.parse('${AppStrings.apiBaseUrl}/api/visits'),
-        headers: {
-          'Authorization': 'Bearer $_token',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(visit),
+      final response = await _retryApiCall(
+        () => http.post(
+          Uri.parse('${AppStrings.apiBaseUrl}/api/visits'),
+          headers: {
+            'Authorization': 'Bearer $_token',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(visit),
+        ),
       );
-      debugPrint('📤 Create visit response: ${response.statusCode}, ${response.body}');
+
+      debugPrint(
+        '📤 Create visit response: ${response.statusCode}, ${response.body}',
+      );
       if (response.statusCode == 201) {
         await loadVisitorTags();
         await loadCheckedInVisitors();
-        notifyListeners();
+        _safeNotifyListeners();
       } else {
-        throw Exception('Failed to create visit: ${response.statusCode} - ${response.body}');
+        throw VisitorNetworkException(
+          'Failed to create visit: ${response.statusCode} - ${response.body}',
+        );
       }
     } catch (e) {
       debugPrint('❌ Error creating visit for existing visitor: $e');
-      throw e;
+      rethrow;
     }
   }
+
+  /// Initializes the provider with authentication data
   Future<void> init(String token, String gateId, String deviceGate) async {
     if (_isDisposed) return;
 
-    _token = token.isNotEmpty ? token : null;
-    _gateId = gateId.isNotEmpty ? gateId : null;
-    _deviceGate = deviceGate.isNotEmpty ? deviceGate : null;
+    if (!_validateInput(token) ||
+        !_validateInput(gateId) ||
+        !_validateInput(deviceGate)) {
+      throw VisitorValidationException('Invalid initialization parameters');
+    }
+
+    _token = token;
+    _gateId = gateId;
+    _deviceGate = deviceGate;
 
     await _loadCachedData();
     await debugSharedPreferences();
@@ -376,10 +429,7 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
         await refreshData();
       } catch (e) {
         debugPrint('❌ Initialization error: $e');
-        if (e.toString().contains(
-              'Authentication token is missing or invalid',
-            ) ||
-            e.toString().contains('401')) {
+        if (e is VisitorAuthException) {
           await _clearAuthenticationState();
         }
       } finally {
@@ -395,6 +445,7 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
     }
   }
 
+  /// Authenticates a user with the provided credentials
   Future<void> login(
     String username,
     String password,
@@ -403,8 +454,12 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
   ) async {
     if (_isDisposed) return;
 
-    if (!_validateInput(username) || !_validateInput(password)) {
-      throw Exception('Invalid username or password');
+    if (!_validateInput(username) ||
+        !_validateInput(password) ||
+        !_validateInput(gateId)) {
+      throw VisitorValidationException(
+        'Invalid username, password, or gate ID',
+      );
     }
 
     _isLoading = true;
@@ -415,7 +470,7 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
       try {
         parsedGateId = int.parse(gateId);
       } catch (e) {
-        throw Exception('Invalid gate ID format');
+        throw VisitorValidationException('Invalid gate ID format');
       }
 
       debugPrint(
@@ -442,7 +497,7 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
         if (data['token'] == null ||
             data['user'] == null ||
             data['gate_id'] == null) {
-          throw Exception(
+          throw VisitorAuthException(
             'Invalid response from server: Missing token or user data',
           );
         }
@@ -506,17 +561,18 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
         await refreshData();
       } else {
         _handleApiError(response, 'Login failed');
-        throw Exception('Login failed: ${response.statusCode}');
+        throw VisitorAuthException('Login failed: ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('❌ Login error: $e');
-      throw Exception(_parseErrorMessage(e.toString()));
+      rethrow;
     } finally {
       _isLoading = false;
       _safeNotifyListeners();
     }
   }
 
+  /// Loads available gates from the API
   Future<void> loadGates() async {
     if (_isDisposed) return;
 
@@ -582,12 +638,15 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
     }
   }
 
+  /// Loads available destinations from the API
   Future<void> loadDestinations() async {
+    if (_isDisposed) return;
+
     final token = await _getTokenFromPreferences();
     final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
-    if (token == null || gateId == null || _isDisposed) {
-      debugPrint('⚠️ Cannot load destinations: Not authenticated or disposed');
-      return;
+    if (token == null || gateId == null) {
+      debugPrint('⚠️ Cannot load destinations: Not authenticated');
+      throw VisitorAuthException('Not authenticated');
     }
 
     _token = token;
@@ -622,7 +681,7 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
                   .toList();
           await _saveCachedData();
         } else {
-          throw Exception('Invalid destinations data format');
+          throw VisitorValidationException('Invalid destinations data format');
         }
       } else {
         _handleApiError(response, 'Failed to load destinations');
@@ -644,12 +703,15 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
     }
   }
 
+  /// Loads visitor tags for the current gate
   Future<void> loadVisitorTags() async {
+    if (_isDisposed) return;
+
     final token = await _getTokenFromPreferences();
     final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
-    if (token == null || gateId == null || _isDisposed) {
-      debugPrint('⚠️ Cannot load visitor tags: Not authenticated or disposed');
-      return;
+    if (token == null || gateId == null) {
+      debugPrint('⚠️ Cannot load visitor tags: Not authenticated');
+      throw VisitorAuthException('Not authenticated');
     }
 
     _token = token;
@@ -693,7 +755,7 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
                   .toList();
           await _saveCachedData();
         } else {
-          throw Exception('Invalid visitor tags data format');
+          throw VisitorValidationException('Invalid visitor tags data format');
         }
       } else {
         _handleApiError(response, 'Failed to load visitor tags');
@@ -713,14 +775,21 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
     }
   }
 
+  /// Checks visitor by ID type and number
   Future<Map<String, dynamic>?> checkVisitor(
     String idType,
     String idNumber,
   ) async {
+    if (_isDisposed) return null;
+
+    if (!_validateInput(idType) || !_validateInput(idNumber)) {
+      throw VisitorValidationException('ID type and number are required');
+    }
+
     final token = await _getTokenFromPreferences();
     final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
-    if (token == null || gateId == null || _isDisposed) {
-      debugPrint('⚠️ Cannot check visitor: Not authenticated or disposed');
+    if (token == null || gateId == null) {
+      debugPrint('⚠️ Cannot check visitor: Not authenticated');
       throw VisitorAuthException('No authentication token or gate ID found');
     }
 
@@ -756,13 +825,13 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
         await _saveCachedData();
         return data;
       } else if (response.statusCode == 404) {
-        return null; // No visitor found
+        return null;
       } else if (response.statusCode == 401) {
         throw VisitorAuthException(
-          'Authentication failed: Invalid or expired token.',
+          'Authentication failed: Invalid or expired token',
         );
       }
-      throw VisitorValidationException(
+      throw VisitorNetworkException(
         'Failed to check visitor: ${response.statusCode} - ${response.body}',
       );
     } catch (e) {
@@ -773,196 +842,176 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
       _safeNotifyListeners();
     }
   }
+/// Registers a new visitor
+Future<void> registerVisitor(Visitor visitor) async {
+  if (_isDisposed) return;
 
-  Future<void> registerVisitor(Visitor visitor) async {
-    final token = await _getTokenFromPreferences();
-    final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
-    if (token == null || gateId == null || _isDisposed) {
-      debugPrint(
-        '⚠️ Cannot register visitor: No authentication token or gate ID found',
-      );
-      throw VisitorAuthException('No authentication token or gate ID found');
-    }
-
-    _token = token;
-    _gateId = gateId;
-
-    // Validate token
-    try {
-      final isValidToken = await _validateToken();
-      if (!isValidToken) {
-        debugPrint('⚠️ Invalid or expired token');
-        throw VisitorAuthException('Session expired. Please log in again.');
-      }
-    } catch (e) {
-      debugPrint('❌ Token validation error: $e');
-      throw VisitorAuthException('Failed to validate token: $e');
-    }
-
-    // Check for existing visitor
-    try {
-      final existingVisitor = await checkExistingVisitor(
-        visitor.identificationNumber ?? '',
-        visitor.identificationType ?? '',
-      );
-      if (existingVisitor != null) {
-        debugPrint(
-          '⚠️ Visitor with ID ${visitor.identificationNumber} already exists: $existingVisitor',
-        );
-        throw VisitorValidationException(
-          'Visitor with ID ${visitor.identificationNumber} already exists',
-        );
-      }
-    } catch (e) {
-      if (e is! VisitorAuthException) {
-        // Rethrow non-auth exceptions to handle in UI
-        rethrow;
-      }
-      debugPrint('❌ Error checking existing visitor: $e');
-      throw e;
-    }
-
-    _isLoading = true;
-    _safeNotifyListeners();
-
-    int? visitorTagId;
-    try {
-      visitorTagId = await getAvailableVisitorTagId(gateId: gateId);
-      debugPrint('✅ Retrieved available visitor tag ID: $visitorTagId');
-    } catch (e) {
-      debugPrint('❌ Failed to get available tag: $e');
-      throw Exception('Unable to register visitor: No available tags: $e');
-    }
-
-    try {
-      final payload = {
-        'name': _sanitizeInput(visitor.name),
-        'phone_number':
-            visitor.phoneNumber?.trim().replaceFirst(RegExp(r'^\+254'), '') ??
-            '',
-        'phone_country_code': '+254',
-        'is_minor': visitor.isMinor ?? false,
-        'guardian_phone':
-            visitor.isMinor == true && visitor.guardianPhone != null
-                ? visitor.guardianPhone!.trim().replaceFirst(
-                  RegExp(r'^\+254'),
-                  '',
-                )
-                : null,
-        'visitor_tag_id': visitorTagId,
-        'destination_id': (visitor.destinationId ?? '').toString(),
-        'identification_type': visitor.identificationType ?? '',
-        'identification_number': _sanitizeInput(visitor.identificationNumber),
-        'visitor_gate_id': visitor.gateId ?? gateId,
-        'had_appointment': visitor.hadAppointment ?? false,
-        'vehicle_type': visitor.vehicleType,
-        'vehicle_registration': visitor.vehicleRegistration,
-        'visit_type': visitor.visitType ?? '',
-        'host_type': visitor.visitType ?? '',
-        if (visitor.visitType == 'staff' && visitor.host != null) ...{
-          'host': _sanitizeInput(visitor.host!['name']),
-          'host_phone':
-              visitor.host!['phone']?.trim().replaceFirst(
-                RegExp(r'^\+254'),
-                '',
-              ) ??
-              '',
-          'host_email':
-              visitor.host!['email']?.isNotEmpty == true
-                  ? visitor.host!['email']
-                  : null,
-          'host_department':
-              visitor.host!['department']?.isNotEmpty == true
-                  ? visitor.host!['department']
-                  : null,
-          'host_position':
-              visitor.host!['position']?.isNotEmpty == true
-                  ? visitor.host!['position']
-                  : null,
-        },
-        if (visitor.visitType == 'office') ...{
-          'office_name': _sanitizeInput(visitor.officeName),
-          'office_phone':
-              visitor.officePhone?.trim().replaceFirst(RegExp(r'^\+254'), '') ??
-              '',
-          'office_email':
-              visitor.officeEmail?.isNotEmpty == true
-                  ? visitor.officeEmail
-                  : null,
-          'office_department':
-              visitor.officeDepartment?.isNotEmpty == true
-                  ? visitor.officeDepartment
-                  : null,
-          'office_contact_person': _sanitizeInput(visitor.officeContactPerson),
-        },
-      }..removeWhere(
-        (key, value) => value == null || (value is String && value.isEmpty),
-      );
-
-      debugPrint(
-        '📤 Sending payload to /api/visitors-store: ${jsonEncode(payload)}',
-      );
-
-      final response = await _retryApiCall(
-        () => http.post(
-          Uri.parse('${AppStrings.apiBaseUrl}/api/visitors-store'),
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(payload),
-        ),
-      );
-
-      debugPrint('📥 Response status: ${response.statusCode}');
-      debugPrint('📥 Response body: ${response.body}');
-
-      if (response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        if (data['visitor'] == null) {
-          debugPrint('❌ Invalid response: Missing visitor data');
-          throw Exception('Invalid response: Missing visitor data');
-        }
-        final newVisitor = Visitor.fromMap(data['visitor']);
-        _visitors.add(newVisitor);
-        await _saveCachedData();
-        debugPrint('✅ Visitor registered successfully: ${newVisitor.name}');
-      } else {
-        if (response.statusCode == 422) {
-          final errorData = jsonDecode(response.body);
-          final errorMessage =
-              errorData['message']?.toString() ??
-              errorData['error']?.toString() ??
-              'Validation failed';
-          final validationErrors =
-              errorData['details'] != null
-                  ? (errorData['details'] as Map<String, dynamic>).entries
-                      .map((e) => '${e.key}: ${e.value.join(', ')}')
-                      .join('; ')
-                  : 'No specific error details provided';
-          debugPrint('❌ Validation error: $errorMessage - $validationErrors');
-          throw VisitorValidationException('$errorMessage - $validationErrors');
-        } else if (response.statusCode == 401) {
-          debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
-          throw VisitorAuthException(
-            'Authentication failed: Invalid or expired token.',
-          );
-        }
-        debugPrint('❌ API error: ${response.statusCode} - ${response.body}');
-        throw Exception(
-          'Failed to register visitor: ${response.statusCode} - ${response.body}',
-        );
-      }
-    } catch (e) {
-      debugPrint('❌ Registration error: $e');
-      throw e; // Preserve original exception type
-    } finally {
-      _isLoading = false;
-      _safeNotifyListeners();
-    }
+  final token = await _getTokenFromPreferences();
+  final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
+  if (token == null || gateId == null) {
+    debugPrint('⚠️ Cannot register visitor: No authentication token or gate ID found');
+    throw VisitorAuthException('No authentication token or gate ID found');
   }
 
+  _token = token;
+  _gateId = gateId;
+
+  try {
+    final isValidToken = await _validateToken();
+    if (!isValidToken) {
+      debugPrint('⚠️ Invalid or expired token');
+      throw VisitorAuthException('Session expired. Please log in again.');
+    }
+  } catch (e) {
+    debugPrint('❌ Token validation error: $e');
+    throw VisitorAuthException('Failed to validate token: $e');
+  }
+
+  try {
+    final existingVisitor = await checkExistingVisitor(
+      visitor.identificationNumber ?? '',
+      visitor.identificationType ?? '',
+    );
+    if (existingVisitor != null && existingVisitor['exists'] == true) {
+      debugPrint('⚠️ Visitor with ID ${visitor.identificationNumber} already exists: $existingVisitor');
+      throw VisitorValidationException('Visitor with ID ${visitor.identificationNumber} already exists');
+    }
+  } catch (e) {
+    if (e is! VisitorAuthException) {
+      rethrow;
+    }
+    debugPrint('❌ Error checking existing visitor: $e');
+    throw e;
+  }
+
+  _isLoading = true;
+  _safeNotifyListeners();
+
+  int? visitorTagId;
+  try {
+    visitorTagId = await getAvailableVisitorTagId(gateId: gateId);
+    debugPrint('✅ Retrieved available visitor tag ID: $visitorTagId');
+  } catch (e) {
+    debugPrint('❌ Failed to get available tag: $e');
+    throw VisitorValidationException('Unable to register visitor: No available tags: $e');
+  }
+
+  try {
+    final payload = {
+      'name': _sanitizeInput(visitor.name),
+      'phone_number': visitor.phoneNumber?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
+      'phone_country_code': visitor.phoneCountryCode ?? '+254',
+      'is_minor': visitor.isMinor ?? false,
+      'guardian_phone': visitor.isMinor == true && visitor.guardianPhone != null
+          ? visitor.guardianPhone!.trim().replaceFirst(RegExp(r'^\+254'), '')
+          : null,
+      'visitor_tag_id': Visitor.parseInt(visitorTagId, 'visitor_tag_id'),
+      'destination_id': Visitor.parseInt(visitor.destinationId, 'destination_id'),
+      'identification_type': _sanitizeInput(visitor.identificationType),
+      'identification_number': _sanitizeInput(visitor.identificationNumber),
+      'visitor_gate_id': Visitor.parseInt(visitor.gateId ?? gateId, 'visitor_gate_id'),
+      'had_appointment': visitor.hadAppointment, // Updated: Send as raw boolean
+      'appointment_details': _sanitizeInput(visitor.appointmentDetails), // Updated: Include appointment_details
+      'vehicle_type': _sanitizeInput(visitor.vehicleType),
+      'vehicle_registration': _sanitizeInput(visitor.vehicleRegistration),
+      'visit_type': visitor.visitType ?? 'staff',
+      'host_type': visitor.hostType,
+      if (visitor.visitType == 'staff' && visitor.host != null) ...{
+        'host': _sanitizeInput(visitor.host!['name']),
+        'host_phone': visitor.host!['phone']?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
+        'host_email': visitor.host!['email']?.isNotEmpty == true ? _sanitizeInput(visitor.host!['email']) : null,
+        'host_department': visitor.host!['department']?.isNotEmpty == true ? _sanitizeInput(visitor.host!['department']) : null,
+        'host_position': visitor.host!['position']?.isNotEmpty == true ? _sanitizeInput(visitor.host!['position']) : null,
+      },
+      if (visitor.visitType == 'office') ...{
+        'office_name': _sanitizeInput(visitor.officeName),
+        'office_phone': visitor.officePhone?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
+        'office_email': visitor.officeEmail?.isNotEmpty == true ? _sanitizeInput(visitor.officeEmail) : null,
+        'office_department': visitor.officeDepartment?.isNotEmpty == true ? _sanitizeInput(visitor.officeDepartment) : null,
+        'office_contact_person': _sanitizeInput(visitor.officeContactPerson),
+      },
+    }..removeWhere((key, value) => value == null || (value is String && value.isEmpty));
+
+    debugPrint('📤 Sending payload to /api/visitors-store: ${jsonEncode(payload)}');
+
+    final response = await _retryApiCall(
+      () => http.post(
+        Uri.parse('${AppStrings.apiBaseUrl}/api/visitors-store'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode(payload),
+      ),
+    );
+
+    debugPrint('📥 Response status: ${response.statusCode}');
+    debugPrint('📥 Response body: ${response.body}');
+    final data = jsonDecode(response.body);
+    debugPrint('📝 Raw visitor map: ${jsonEncode(data['visitor'])}');
+
+    if (response.statusCode == 201) {
+      if (data['visitor'] == null) {
+        debugPrint('❌ Invalid response: Missing visitor data');
+        throw VisitorValidationException('Invalid response: Missing visitor data');
+      }
+      final visitorMap = Map<String, dynamic>.from(data['visitor']);
+      debugPrint('📝 Original visitor map: ${jsonEncode(visitorMap)}');
+
+      try {
+        visitorMap['id'] = Visitor.parseInt(visitorMap['id'], 'id') ?? (throw VisitorValidationException('Invalid visitor id: ${visitorMap['id']}'));
+        if (visitorMap['visitor_tag_id'] != null) {
+          visitorMap['visitor_tag_id'] = Visitor.parseInt(visitorMap['visitor_tag_id'], 'visitor_tag_id');
+        }
+        if (visitorMap['destination_id'] != null) {
+          visitorMap['destination_id'] = Visitor.parseInt(visitorMap['destination_id'], 'destination_id');
+        }
+        if (visitorMap['gate_id'] != null) {
+          visitorMap['gate_id'] = Visitor.parseInt(visitorMap['gate_id'], 'gate_id');
+        }
+        if (visitorMap['floor_id'] != null) {
+          visitorMap['floor_id'] = Visitor.parseInt(visitorMap['floor_id'], 'floor_id');
+        }
+        debugPrint('📝 Preprocessed visitor map: ${jsonEncode(visitorMap)}');
+      } catch (e) {
+        debugPrint('❌ Error preprocessing visitor map: $e');
+        throw VisitorValidationException('Failed to preprocess visitor map: $e');
+      }
+
+      try {
+        final newVisitor = Visitor.fromMap(visitorMap);
+        _visitors.add(newVisitor);
+        debugPrint('✅ Visitor registered successfully: ${newVisitor.name}');
+      } catch (e) {
+        debugPrint('❌ Error creating Visitor object: $e');
+        throw VisitorValidationException('Failed to create Visitor object: $e');
+      }
+    } else {
+      if (response.statusCode == 422) {
+        final errorData = jsonDecode(response.body);
+        final errorMessage = errorData['message']?.toString() ?? errorData['error']?.toString() ?? 'Validation failed';
+        final validationErrors = errorData['details'] != null
+            ? (errorData['details'] as Map<String, dynamic>).entries.map((e) => '${e.key}: ${e.value.join(', ')}').join('; ')
+            : 'No specific error details provided';
+        debugPrint('❌ Validation error: $errorMessage - $validationErrors');
+        throw VisitorValidationException('$errorMessage - $validationErrors');
+      } else if (response.statusCode == 401) {
+        debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
+        throw VisitorAuthException('Authentication failed: Invalid or expired token');
+      }
+      debugPrint('❌ API error: ${response.statusCode} - ${response.body}');
+      throw VisitorNetworkException('Failed to register visitor: ${response.statusCode} - ${response.body}');
+    }
+  } catch (e) {
+    debugPrint('❌ Registration error: $e');
+    rethrow;
+  } finally {
+    _isLoading = false;
+    _safeNotifyListeners();
+  }
+}
+  /// Logs out the current user
   Future<void> logout() async {
     if (_isDisposed) return;
 
@@ -997,6 +1046,7 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
     }
   }
 
+  /// Clears authentication state
   Future<void> _clearAuthenticationState() async {
     _token = null;
     _deviceGate = null;
@@ -1012,14 +1062,14 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
     _visitorTags = [];
     _gates = [];
     _gateMap = null;
-    _totalVisitCount = 0;
-    _todaysVisitCount = 0;
     _checkedInCount = 0;
     _checkedOutCount = 0;
+    _todaysTotalCount = 0;
     await _saveCachedData();
     debugPrint('✅ Cleared authentication state');
   }
 
+  /// Clears stored data from SharedPreferences
   Future<void> _clearStoredData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1027,129 +1077,11 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
       debugPrint('✅ Cleared SharedPreferences');
     } catch (e) {
       debugPrint('❌ Error clearing stored data: $e');
+      throw VisitorAuthException('Failed to clear stored data: $e');
     }
   }
 
-  Future<void> loadVisitors({int page = 1, int limit = 50}) async {
-    if (_isDisposed) return;
-
-    final token = await _getTokenFromPreferences();
-    final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
-    if (token == null || gateId == null) {
-      debugPrint('⚠️ Cannot load visitors: Not authenticated');
-      return;
-    }
-
-    _token = token;
-    _gateId = gateId;
-
-    _isLoading = true;
-    _safeNotifyListeners();
-
-    try {
-      final response = await _retryApiCall(
-        () => http.get(
-          Uri.parse(
-            '${AppStrings.apiBaseUrl}/api/visitors?gate_id=$gateId&page=$page&limit=$limit',
-          ),
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-        ),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['visits'] != null && data['visits'] is List) {
-          final newVisitors =
-              (data['visits'] as List)
-                  .map(
-                    (v) => Visitor.fromMap({
-                      ...v['visitor'] ?? {},
-                      'action':
-                          v['status'] == 'active'
-                              ? 'checked in'
-                              : v['status'] ?? 'checked out',
-                      'gate': _deviceGate,
-                      'gate_id': gateId,
-                      'visitor_tag_id': v['visitor_tag']?['id']?.toString(),
-                      'tag_number': v['visitor_tag']?['tag_number']?.toString(),
-                      'destination_id':
-                          v['visitor_destination']?['id']?.toString(),
-                      'check_in_time':
-                          v['check_in_time'] != null &&
-                                  v['check_in_time'].isNotEmpty
-                              ? DateTime.tryParse(
-                                    v['check_in_time'],
-                                  )?.toIso8601String() ??
-                                  ''
-                              : '',
-                      'check_out_time':
-                          v['check_out_time'] != null &&
-                                  v['check_out_time'].isNotEmpty
-                              ? DateTime.tryParse(
-                                    v['check_out_time'],
-                                  )?.toIso8601String() ??
-                                  ''
-                              : '',
-                      'host':
-                          v['host_type'] == 'staff'
-                              ? {
-                                'name': v['host']?.toString() ?? 'N/A',
-                                'phone': v['host_phone']?.toString() ?? 'N/A',
-                                'email': v['host_email']?.toString() ?? 'N/A',
-                                'department':
-                                    v['host_department']?.toString() ?? 'N/A',
-                                'position':
-                                    v['host_position']?.toString() ?? 'N/A',
-                              }
-                              : null,
-                      'office':
-                          v['host_type'] == 'office'
-                              ? {
-                                'name': v['office_name']?.toString() ?? 'N/A',
-                                'phone': v['office_phone']?.toString() ?? 'N/A',
-                                'email': v['office_email']?.toString() ?? 'N/A',
-                                'department':
-                                    v['office_department']?.toString() ?? 'N/A',
-                                'contact_person':
-                                    v['office_contact_person']?.toString() ??
-                                    'N/A',
-                              }
-                              : null,
-                      'visit_type': v['host_type']?.toString(),
-                      'appointment_details': v['had_appointment']?.toString(),
-                      'vehicle_type': v['vehicle_type']?.toString(),
-                      'vehicle_registration':
-                          v['vehicle_registration']?.toString(),
-                    }),
-                  )
-                  .toList();
-          if (page == 1) {
-            _visitors = newVisitors;
-          } else {
-            _visitors.addAll(newVisitors);
-          }
-          await _saveCachedData();
-        } else {
-          throw Exception('Invalid visitors data format');
-        }
-      } else {
-        _handleApiError(response, 'Failed to load visitors');
-        if (response.statusCode == 401) {
-          await _clearAuthenticationState();
-        }
-      }
-    } catch (e) {
-      debugPrint('❌ Error loading visitors: $e');
-    } finally {
-      _isLoading = false;
-      _safeNotifyListeners();
-    }
-  }
-
+  /// Loads currently checked-in visitors
   Future<void> loadCheckedInVisitors() async {
     if (_isDisposed) return;
 
@@ -1248,26 +1180,29 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
         if (response.statusCode == 401) {
           debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
           throw VisitorAuthException(
-            'Authentication failed: Invalid or expired token.',
+            'Authentication failed: Invalid or expired token',
           );
         }
-        throw Exception(
+        throw VisitorNetworkException(
           'Failed to load checked-in visitors: ${response.statusCode} - ${response.body}',
         );
       }
     } catch (e) {
       debugPrint('❌ Error loading checked-in visitors: $e');
-      throw e;
+      rethrow;
     } finally {
       _isLoading = false;
       _safeNotifyListeners();
     }
   }
 
-  Future<void> logVisitCount() async {
+  /// Loads visit count for the specified time range
+  Future<void> logVisitCount({String timeRange = 'Today'}) async {
+    if (_isDisposed) return;
+
     final token = await _getTokenFromPreferences();
     final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
-    if (token == null || gateId == null || _isDisposed) {
+    if (token == null || gateId == null) {
       debugPrint(
         '⚠️ Cannot load visit count: No authentication token or gate ID found',
       );
@@ -1281,8 +1216,8 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
     _safeNotifyListeners();
     try {
       final uri = Uri.parse(
-        '${AppStrings.apiBaseUrl}/api/visitors/visit-count',
-      ).replace(queryParameters: {'gate_id': gateId});
+        '${AppStrings.apiBaseUrl}/api/visit-count',
+      ).replace(queryParameters: {'gate_id': gateId, 'time_range': timeRange});
       final response = await _retryApiCall(
         () => http.get(
           uri,
@@ -1294,33 +1229,45 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
         ),
       );
 
+      debugPrint(
+        '📥 Visit count response: ${response.statusCode}, ${response.body}',
+      );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        _todaysVisitCount = data['todays_count']?.toInt() ?? 0;
-        _totalVisitCount = data['total_count']?.toInt() ?? 0;
+        if (data['success'] != true) {
+          throw VisitorNetworkException(
+            'Failed to load visit count: ${data['message'] ?? 'Unknown error'}',
+          );
+        }
+        _checkedInCount = data['checked_in_count']?.toInt() ?? 0;
         _checkedOutCount = data['checked_out_count']?.toInt() ?? 0;
+        _todaysTotalCount = data['todays_total_count']?.toInt() ?? 0;
         await _saveCachedData();
+        debugPrint(
+          '✅ Visit counts loaded: checked_in=$_checkedInCount, checked_out=$_checkedOutCount, total_today=$_todaysTotalCount, time_range=$timeRange',
+        );
       } else {
         _handleApiError(response, 'Failed to load visit count');
         if (response.statusCode == 401) {
           debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
           throw VisitorAuthException(
-            'Authentication failed: Invalid or expired token.',
+            'Authentication failed: Invalid or expired token',
           );
         }
-        throw Exception(
+        throw VisitorNetworkException(
           'Failed to load visit count: ${response.statusCode} - ${response.body}',
         );
       }
     } catch (e) {
       debugPrint('❌ Error loading visit count: $e');
-      throw e;
+      rethrow;
     } finally {
       _isLoading = false;
       _safeNotifyListeners();
     }
   }
 
+  /// Gets an available visitor tag ID
   Future<int?> getAvailableVisitorTagId({String? gateId}) async {
     try {
       final uri = Uri.parse(
@@ -1346,15 +1293,20 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
         if (data['tags']?.isNotEmpty == true) {
           return data['tags'][0]['id'];
         }
-        throw Exception('No unassigned visitor tags available.');
+        throw VisitorValidationException(
+          'No unassigned visitor tags available',
+        );
       }
-      throw Exception('Failed to fetch available tags: ${response.statusCode}');
+      throw VisitorNetworkException(
+        'Failed to fetch available tags: ${response.statusCode}',
+      );
     } catch (e) {
       debugPrint('❌ Error fetching available tags: $e');
-      throw Exception('Failed to fetch available tags: $e');
+      throw VisitorValidationException('Failed to fetch available tags: $e');
     }
   }
 
+  /// Checks out a visitor
   Future<void> checkOutVisitor(Visitor visitor) async {
     if (_isDisposed) return;
 
@@ -1362,6 +1314,10 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
     if (token == null) {
       debugPrint('⚠️ Cannot check out visitor: No authentication token found');
       throw VisitorAuthException('No authentication token found');
+    }
+
+    if (visitor.id == null) {
+      throw VisitorValidationException('Visitor ID is required for checkout');
     }
 
     _token = token;
@@ -1385,7 +1341,7 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
       if (response.statusCode == 200) {
         final updatedVisitorData = jsonDecode(response.body);
         if (!updatedVisitorData['success']) {
-          throw Exception(updatedVisitorData['message']);
+          throw VisitorValidationException(updatedVisitorData['message']);
         }
         final updatedVisitor = Visitor.fromMap(
           updatedVisitorData['visitor'] ?? updatedVisitorData,
@@ -1394,36 +1350,110 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
             _visitors
                 .map((v) => v.id == visitor.id ? updatedVisitor : v)
                 .toList();
+        _checkedInCount--;
+        _checkedOutCount++;
+        await _saveCachedData();
       } else {
         if (response.statusCode == 401) {
           debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
           throw VisitorAuthException(
-            'Authentication failed: Invalid or expired token.',
+            'Authentication failed: Invalid or expired token',
           );
         }
-        throw Exception(
+        throw VisitorNetworkException(
           'Failed to check out visitor: ${response.statusCode} - ${response.body}',
         );
       }
     } catch (e) {
       debugPrint('❌ Error checking out visitor: $e');
-      throw e;
+      rethrow;
     } finally {
       _isLoading = false;
       _safeNotifyListeners();
     }
   }
 
+  /// Updates a visitor's status
+  Future<void> updateVisitorStatus(String visitorId, String status) async {
+    if (_isDisposed) return;
+
+    final token = await _getTokenFromPreferences();
+    if (token == null) {
+      debugPrint(
+        '⚠️ Cannot update visitor status: No authentication token found',
+      );
+      throw VisitorAuthException('No authentication token found');
+    }
+
+    if (!_validateInput(visitorId) || !_validateInput(status)) {
+      throw VisitorValidationException('Visitor ID and status are required');
+    }
+
+    _token = token;
+
+    _isLoading = true;
+    _safeNotifyListeners();
+    try {
+      final uri = Uri.parse(
+        '${AppStrings.apiBaseUrl}/api/visitors/$visitorId/status',
+      );
+      final response = await _retryApiCall(
+        () => http.put(
+          uri,
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode({'status': status}),
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final updatedVisitorData = jsonDecode(response.body);
+        final updatedVisitor = Visitor.fromMap(
+          updatedVisitorData['visitor'] ?? updatedVisitorData,
+        );
+        _visitors =
+            _visitors
+                .map((v) => v.id == visitorId ? updatedVisitor : v)
+                .toList();
+        await _saveCachedData();
+      } else {
+        if (response.statusCode == 401) {
+          debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
+          throw VisitorAuthException(
+            'Authentication failed: Invalid or expired token',
+          );
+        }
+        throw VisitorNetworkException(
+          'Failed to update visitor status: ${response.statusCode} - ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error updating visitor status: $e');
+      rethrow;
+    } finally {
+      _isLoading = false;
+      _safeNotifyListeners();
+    }
+  }
+
+  /// Verifies identity using student ID, username, or staff number
   Future<Map<String, dynamic>> verifyIdentity({
     String? studentId,
     String? username,
     String? staffNo,
   }) async {
+    if (_isDisposed) {
+      return {'success': false, 'message': 'Provider disposed'};
+    }
+
     final token = await _getTokenFromPreferences();
     final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
-    if (token == null || gateId == null || _isDisposed) {
-      debugPrint('⚠️ Cannot verify identity: Not authenticated or disposed');
-      return {'success': false, 'message': 'Not authenticated'};
+    if (token == null || gateId == null) {
+      debugPrint('⚠️ Cannot verify identity: Not authenticated');
+      throw VisitorAuthException('Not authenticated');
     }
 
     _token = token;
@@ -1435,7 +1465,7 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
       if (staffNo != null) 'staffNo',
     ];
     if (providedParams.length != 1) {
-      return {'success': false, 'message': 'Exactly one identifier required'};
+      throw VisitorValidationException('Exactly one identifier required');
     }
 
     _isLoading = true;
@@ -1499,19 +1529,22 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
         _handleApiError(response, 'Failed to verify identity');
         if (response.statusCode == 401) {
           debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
-          return {'success': false, 'message': 'Authentication failed'};
+          throw VisitorAuthException('Authentication failed');
         }
-        return {'success': false, 'message': 'Failed to verify identity'};
+        throw VisitorNetworkException(
+          'Failed to verify identity: ${response.statusCode}',
+        );
       }
     } catch (e) {
       debugPrint('❌ Error verifying identity: $e');
-      return {'success': false, 'message': _parseErrorMessage(e.toString())};
+      rethrow;
     } finally {
       _isLoading = false;
       _safeNotifyListeners();
     }
   }
 
+  /// Saves cached data to SharedPreferences
   Future<void> _saveCachedData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1520,10 +1553,9 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
       final tagsJson = jsonEncode(_visitorTags);
       final gatesJson = jsonEncode(_gates);
       final countsJson = jsonEncode({
-        'total_visit_count': _totalVisitCount,
-        'todays_visit_count': _todaysVisitCount,
         'checked_in_count': _checkedInCount,
         'checked_out_count': _checkedOutCount,
+        'todays_total_count': _todaysTotalCount,
       });
 
       await prefs.setString('token', _token ?? '');
@@ -1545,12 +1577,13 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
       await prefs.setString('gates', gatesJson);
       await prefs.setString('visit_counts', countsJson);
       debugPrint('✅ Saved cached data to SharedPreferences');
-      await debugSharedPreferences();
     } catch (e) {
       debugPrint('❌ Error saving cached data: $e');
+      throw VisitorAuthException('Failed to save cached data: $e');
     }
   }
 
+  /// Loads cached data from SharedPreferences
   Future<void> _loadCachedData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1663,28 +1696,27 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
         final cachedCounts = prefs.getString('visit_counts');
         if (cachedCounts != null && cachedCounts.isNotEmpty) {
           final counts = jsonDecode(cachedCounts) as Map<String, dynamic>;
-          _totalVisitCount = counts['total_visit_count']?.toInt() ?? 0;
-          _todaysVisitCount = counts['todays_visit_count']?.toInt() ?? 0;
           _checkedInCount = counts['checked_in_count']?.toInt() ?? 0;
           _checkedOutCount = counts['checked_out_count']?.toInt() ?? 0;
+          _todaysTotalCount = counts['todays_total_count']?.toInt() ?? 0;
         } else {
-          _totalVisitCount = 0;
-          _todaysVisitCount = 0;
           _checkedInCount = 0;
           _checkedOutCount = 0;
+          _todaysTotalCount = 0;
         }
       } catch (e) {
         debugPrint('❌ Error loading cached visit counts: $e');
-        _totalVisitCount = 0;
-        _todaysVisitCount = 0;
         _checkedInCount = 0;
         _checkedOutCount = 0;
+        _todaysTotalCount = 0;
       }
     } catch (e) {
       debugPrint('❌ Error loading cached data: $e');
+      throw VisitorAuthException('Failed to load cached data: $e');
     }
   }
 
+  /// Retries API calls with exponential backoff
   Future<http.Response> _retryApiCall(
     Future<http.Response> Function() apiCall, {
     int maxRetries = 3,
@@ -1699,7 +1731,9 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
         if (response.statusCode >= 200 && response.statusCode < 300) {
           return response;
         } else {
-          error = Exception('Request failed: Status ${response.statusCode}');
+          error = VisitorNetworkException(
+            'Request failed: Status ${response.statusCode}',
+          );
           _handleApiError(response, 'API call failed');
           if (attempt == maxRetries || response.statusCode == 401) {
             return response;
@@ -1708,21 +1742,24 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
       } catch (e) {
         error = e;
         if (attempt == maxRetries) throw error;
-        await Future.delayed(Duration(seconds: 2 * attempt));
+        await Future.delayed(Duration(milliseconds: 1000 * (1 << attempt)));
       }
     }
     throw error;
   }
 
+  /// Validates input strings
   bool _validateInput(String? input) {
     return input != null && input.trim().isNotEmpty;
   }
 
+  /// Sanitizes input strings
   String _sanitizeInput(String? input) {
     if (input == null) return '';
-    return input.trim();
+    return input.trim().replaceAll(RegExp(r'[<>]'), '');
   }
 
+  /// Validates ID numbers based on type
   String? validateIdNumber(String idNumber, String? idType) {
     if (idNumber.isEmpty) return 'ID number is required';
     if (!RegExp(r'^[A-Za-z0-9]+$').hasMatch(idNumber)) {
@@ -1746,31 +1783,36 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
     return null;
   }
 
+  /// Parses error messages for user-friendly display
   String _parseErrorMessage(String error) {
     if (error.contains('Failed to connect') ||
         error.contains('SocketException')) {
-      return 'Network error: Unable to connect to the server.';
+      return 'Network error: Unable to connect to the server';
     } else if (error.contains('TimeoutException')) {
-      return 'Request timed out. Please try again later.';
+      return 'Request timed out. Please try again later';
     } else if (error.contains('Invalid response format')) {
-      return 'Invalid response from server.';
+      return 'Invalid response from server';
     } else if (error.contains('401')) {
-      return 'Authentication failed. Please log in again.';
+      return 'Authentication failed. Please log in again';
     } else {
       return 'An unexpected error occurred: $error';
     }
   }
 
+  /// Handles API errors
   void _handleApiError(http.Response response, String context) {
     debugPrint(
       '❌ API Error: $context - Status: ${response.statusCode}, Body: ${response.body}',
     );
   }
 
+  /// Updates user profile information
   Future<void> updateUserProfile(Map<String, String> profileData) async {
+    if (_isDisposed) return;
+
     final token = await _getTokenFromPreferences();
-    if (token == null || _isDisposed) {
-      debugPrint('⚠️ Cannot update profile: Not authenticated or disposed');
+    if (token == null) {
+      debugPrint('⚠️ Cannot update profile: Not authenticated');
       throw VisitorAuthException('Not authenticated');
     }
 
@@ -1809,18 +1851,22 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
         _handleApiError(response, 'Failed to update profile');
         if (response.statusCode == 401) {
           debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
-          throw VisitorAuthException('Authentication failed.');
+          throw VisitorAuthException('Authentication failed');
         }
+        throw VisitorNetworkException(
+          'Failed to update profile: ${response.statusCode}',
+        );
       }
     } catch (e) {
       debugPrint('❌ Error updating profile: $e');
-      throw Exception(_parseErrorMessage(e.toString()));
+      throw VisitorNetworkException(_parseErrorMessage(e.toString()));
     } finally {
       _isLoading = false;
       _safeNotifyListeners();
     }
   }
 
+  /// Sets authentication data
   void setAuthData(String token, String gateId, String deviceGate) {
     if (_isDisposed) return;
 
@@ -1830,6 +1876,7 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
     _safeNotifyListeners();
   }
 
+  /// Refreshes all data
   Future<void> refreshData() async {
     if (_isRefreshing || _isDisposed) {
       debugPrint('⚠️ Refresh skipped: Already refreshing or disposed');
@@ -1840,7 +1887,7 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
     final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
     if (token == null || gateId == null) {
       debugPrint('⚠️ Cannot refresh data: Not authenticated');
-      return;
+      throw VisitorAuthException('Not authenticated');
     }
 
     _token = token;
@@ -1865,10 +1912,6 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
           debugPrint('❌ Error loading gates: $e');
           return false;
         }),
-        loadVisitors().then((_) => true).catchError((e) {
-          debugPrint('❌ Error loading visitors: $e');
-          return false;
-        }),
         logVisitCount().then((_) => true).catchError((e) {
           debugPrint('❌ Error loading visit count: $e');
           return false;
@@ -1879,8 +1922,67 @@ Future<Map<String, dynamic>?> checkExistingVisitor(String idNumber, String idTyp
       await _saveCachedData();
     } catch (e) {
       debugPrint('❌ Error refreshing data: $e');
+      rethrow;
     } finally {
       _isRefreshing = false;
+      _isLoading = false;
+      _safeNotifyListeners();
+    }
+  }
+
+  /// Loads visitors from cache (not used in current implementation)
+  Future<void> loadVisitors() async {
+    try {
+      _isLoading = true;
+      _safeNotifyListeners();
+      final prefs = await SharedPreferences.getInstance();
+      final visitorsJson = prefs.getString('visitors');
+      if (visitorsJson != null && visitorsJson.isNotEmpty) {
+        final List<dynamic> visitorMaps = jsonDecode(visitorsJson);
+        debugPrint('📝 Loading cached visitors: ${visitorMaps.length}');
+        _visitors.clear();
+        for (var map in visitorMaps) {
+          try {
+            final visitorMap = Map<String, dynamic>.from(map);
+            visitorMap['id'] = int.parse(visitorMap['id'].toString());
+            if (visitorMap['visitor_tag_id'] != null) {
+              visitorMap['visitor_tag_id'] = int.parse(
+                visitorMap['visitor_tag_id'].toString(),
+              );
+            }
+            if (visitorMap['destination_id'] != null) {
+              visitorMap['destination_id'] = int.parse(
+                visitorMap['destination_id'].toString(),
+              );
+            }
+            if (visitorMap['gate_id'] != null) {
+              visitorMap['gate_id'] = int.parse(
+                visitorMap['gate_id'].toString(),
+              );
+            }
+            if (visitorMap['floor_id'] != null) {
+              visitorMap['floor_id'] = int.parse(
+                visitorMap['floor_id'].toString(),
+              );
+            }
+            debugPrint(
+              '📝 Processing cached visitor map: ${jsonEncode(visitorMap)}',
+            );
+            final visitor = Visitor.fromMap(visitorMap);
+            _visitors.add(visitor);
+          } catch (e) {
+            debugPrint('❌ Error parsing cached visitor: $e');
+            continue;
+          }
+        }
+        debugPrint('✅ Loaded ${_visitors.length} cached visitors');
+      } else {
+        debugPrint('⚠️ No cached visitors found');
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading cached visitors: $e');
+      throw VisitorNetworkException('Failed to load cached visitors: $e');
+    } finally {
       _isLoading = false;
       _safeNotifyListeners();
     }

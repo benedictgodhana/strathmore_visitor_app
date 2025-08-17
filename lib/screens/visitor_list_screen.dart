@@ -740,7 +740,7 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                 _buildDetailRow('Check-in Time', visitor.checkInTime?.format(context) ?? 'Not available', _isDarkMode),
                 _buildDetailRow('Check-out Time', visitor.checkOutTime?.format(context) ?? 'Not checked out', _isDarkMode),
                 _buildDetailRow('Host Type', visitor.visitType ?? 'N/A', _isDarkMode),
-                _buildDetailRow('Appointment', visitor.hadAppointment ?? 'No appointment', _isDarkMode),
+                _buildDetailRow('Appointment', (visitor.hadAppointment ?? 'No appointment').toString(), _isDarkMode),
                 if (visitor.vehicleType != null || visitor.vehicleRegistration != null)
                   _buildDetailRow(
                     'Vehicle',
