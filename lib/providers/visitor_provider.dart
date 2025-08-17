@@ -358,44 +358,100 @@ class VisitorProvider extends ChangeNotifier {
     }
   }
 
-  /// Creates a new visit for an existing visitor
   Future<void> createVisitForExistingVisitor(Map<String, dynamic> visit) async {
-    if (_token == null || _gateId == null) {
-      debugPrint('⚠️ Cannot create visit: No token or gate ID');
-      throw VisitorAuthException('Authentication token or gate ID missing');
-    }
+  if (_isDisposed) return;
 
-    try {
-      final response = await _retryApiCall(
-        () => http.post(
-          Uri.parse('${AppStrings.apiBaseUrl}/api/visits'),
-          headers: {
-            'Authorization': 'Bearer $_token',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(visit),
-        ),
-      );
-
-      debugPrint(
-        '📤 Create visit response: ${response.statusCode}, ${response.body}',
-      );
-      if (response.statusCode == 201) {
-        await loadVisitorTags();
-        await loadCheckedInVisitors();
-        _safeNotifyListeners();
-      } else {
-        throw VisitorNetworkException(
-          'Failed to create visit: ${response.statusCode} - ${response.body}',
-        );
-      }
-    } catch (e) {
-      debugPrint('❌ Error creating visit for existing visitor: $e');
-      rethrow;
-    }
+  final token = await _getTokenFromPreferences();
+  final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
+  if (token == null || gateId == null) {
+    debugPrint('⚠️ Cannot create visit: No authentication token or gate ID found');
+    throw VisitorAuthException('No authentication token or gate ID found');
   }
 
+  _token = token;
+  _gateId = gateId;
+
+  try {
+    final isValidToken = await _validateToken();
+    if (!isValidToken) {
+      debugPrint('⚠️ Invalid or expired token');
+      throw VisitorAuthException('Session expired. Please log in again.');
+    }
+  } catch (e) {
+    debugPrint('❌ Token validation error: $e');
+    throw VisitorAuthException('Failed to validate token: $e');
+  }
+
+  try {
+    final payload = {
+      'visitor_id': Visitor.parseInt(visit['visitor_id'], 'visitor_id'),
+      'visit_type': _sanitizeInput(visit['visit_type']),
+      'visitor_destination_id': Visitor.parseInt(visit['visitor_destination_id'], 'visitor_destination_id'),
+      'visitor_tag_id': Visitor.parseInt(visit['visitor_tag_id'], 'visitor_tag_id'),
+      'gate_id': Visitor.parseInt(visit['gate_id'], 'gate_id'),
+      'had_appointment': visit['had_appointment'], // Send as boolean to match server 'nullable|boolean'
+      'appointment_details': _sanitizeInput(visit['appointment_details']),
+      'vehicle_type': _sanitizeInput(visit['vehicle_type']),
+      'vehicle_registration': _sanitizeInput(visit['vehicle_registration']),
+      if (visit['visit_type'] == 'staff') ...{
+        'host': _sanitizeInput(visit['host']),
+        'host_phone': visit['host_phone']?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
+        'host_email': visit['host_email']?.isNotEmpty == true ? _sanitizeInput(visit['host_email']) : null,
+        'host_department': visit['host_department']?.isNotEmpty == true ? _sanitizeInput(visit['host_department']) : null,
+        'host_position': visit['host_position']?.isNotEmpty == true ? _sanitizeInput(visit['host_position']) : null,
+      },
+      if (visit['visit_type'] == 'office') ...{
+        'office_name': _sanitizeInput(visit['office_name']),
+        'office_phone': visit['office_phone']?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
+        'office_email': visit['office_email']?.isNotEmpty == true ? _sanitizeInput(visit['office_email']) : null,
+        'office_department': visit['office_department']?.isNotEmpty == true ? _sanitizeInput(visit['office_department']) : null,
+        'office_contact_person': _sanitizeInput(visit['office_contact_person']),
+      },
+    }..removeWhere((key, value) => value == null || (value is String && value.isEmpty));
+
+    debugPrint('📤 Sending payload to /api/visits: ${jsonEncode(payload)}');
+
+    final response = await _retryApiCall(
+      () => http.post(
+        Uri.parse('${AppStrings.apiBaseUrl}/api/visits'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode(payload),
+      ),
+    );
+
+    debugPrint('📥 Response status: ${response.statusCode}');
+    debugPrint('📥 Response body: ${response.body}');
+
+    if (response.statusCode == 201) {
+      debugPrint('✅ Visit created successfully for existing visitor');
+    } else {
+      if (response.statusCode == 422) {
+        final errorData = jsonDecode(response.body);
+        final errorMessage = errorData['message']?.toString() ?? errorData['error']?.toString() ?? 'Validation failed';
+        final validationErrors = errorData['details'] != null
+            ? (errorData['details'] as Map<String, dynamic>).entries.map((e) => '${e.key}: ${e.value.join(', ')}').join('; ')
+            : 'No specific error details provided';
+        debugPrint('❌ Validation error: $errorMessage - $validationErrors');
+        throw VisitorValidationException('$errorMessage - $validationErrors');
+      } else if (response.statusCode == 401) {
+        debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
+        throw VisitorAuthException('Authentication failed: Invalid or expired token');
+      }
+      debugPrint('❌ API error: ${response.statusCode} - ${response.body}');
+      throw VisitorNetworkException('Failed to create visit: ${response.statusCode} - ${response.body}');
+    }
+  } catch (e) {
+    debugPrint('❌ Create visit error: $e');
+    rethrow;
+  } finally {
+    _isLoading = false;
+    _safeNotifyListeners();
+  }
+}
   /// Initializes the provider with authentication data
   Future<void> init(String token, String gateId, String deviceGate) async {
     if (_isDisposed) return;
@@ -842,8 +898,7 @@ class VisitorProvider extends ChangeNotifier {
       _safeNotifyListeners();
     }
   }
-/// Registers a new visitor
-Future<void> registerVisitor(Visitor visitor) async {
+  Future<void> registerVisitor(Visitor visitor) async {
   if (_isDisposed) return;
 
   final token = await _getTokenFromPreferences();
@@ -905,13 +960,14 @@ Future<void> registerVisitor(Visitor visitor) async {
       'guardian_phone': visitor.isMinor == true && visitor.guardianPhone != null
           ? visitor.guardianPhone!.trim().replaceFirst(RegExp(r'^\+254'), '')
           : null,
+      'gender': _sanitizeInput(visitor.gender), // Add gender
       'visitor_tag_id': Visitor.parseInt(visitorTagId, 'visitor_tag_id'),
       'destination_id': Visitor.parseInt(visitor.destinationId, 'destination_id'),
       'identification_type': _sanitizeInput(visitor.identificationType),
       'identification_number': _sanitizeInput(visitor.identificationNumber),
       'visitor_gate_id': Visitor.parseInt(visitor.gateId ?? gateId, 'visitor_gate_id'),
-      'had_appointment': visitor.hadAppointment, // Updated: Send as raw boolean
-      'appointment_details': _sanitizeInput(visitor.appointmentDetails), // Updated: Include appointment_details
+      'had_appointment': visitor.hadAppointment, // Send as boolean to match server 'nullable|boolean'
+      'appointment_details': _sanitizeInput(visitor.appointmentDetails),
       'vehicle_type': _sanitizeInput(visitor.vehicleType),
       'vehicle_registration': _sanitizeInput(visitor.vehicleRegistration),
       'visit_type': visitor.visitType ?? 'staff',
@@ -1080,75 +1136,73 @@ Future<void> registerVisitor(Visitor visitor) async {
       throw VisitorAuthException('Failed to clear stored data: $e');
     }
   }
+Future<void> loadCheckedInVisitors() async {
+  if (_isDisposed) return;
 
-  /// Loads currently checked-in visitors
-  Future<void> loadCheckedInVisitors() async {
-    if (_isDisposed) return;
+  final token = await _getTokenFromPreferences();
+  final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
+  final deviceGate =
+      (await SharedPreferences.getInstance()).getString('device_gate') ??
+      'Gate A';
+  if (token == null || gateId == null) {
+    debugPrint(
+      '⚠️ Cannot load checked-in visitors: No authentication token or gate ID found',
+    );
+    throw VisitorAuthException('No authentication token or gate ID found');
+  }
 
-    final token = await _getTokenFromPreferences();
-    final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
-    final deviceGate =
-        (await SharedPreferences.getInstance()).getString('device_gate') ??
-        'Gate A';
-    if (token == null || gateId == null) {
-      debugPrint(
-        '⚠️ Cannot load checked-in visitors: No authentication token or gate ID found',
-      );
-      throw VisitorAuthException('No authentication token or gate ID found');
-    }
+  _token = token;
+  _gateId = gateId;
+  _deviceGate = deviceGate;
 
-    _token = token;
-    _gateId = gateId;
-    _deviceGate = deviceGate;
+  _isLoading = true;
+  _safeNotifyListeners();
+  try {
+    debugPrint(
+      '🔑 Using token: ${token.substring(0, 10)}... for loading checked-in visitors',
+    );
+    final uri = Uri.parse(
+      '${AppStrings.apiBaseUrl}/api/visitors/checked-in',
+    ).replace(queryParameters: {'gate_id': gateId});
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    debugPrint('📡 Sending request to $uri with headers: $headers');
+    final response = await _retryApiCall(
+      () => http.get(uri, headers: headers),
+    );
 
-    _isLoading = true;
-    _safeNotifyListeners();
-    try {
-      debugPrint(
-        '🔑 Using token: ${token.substring(0, 10)}... for loading checked-in visitors',
-      );
-      final uri = Uri.parse(
-        '${AppStrings.apiBaseUrl}/api/visitors/checked-in',
-      ).replace(queryParameters: {'gate_id': gateId});
-      final headers = {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-      debugPrint('📡 Sending request to $uri with headers: $headers');
-      final response = await _retryApiCall(
-        () => http.get(uri, headers: headers),
-      );
-
-      debugPrint(
-        '📋 Checked-in visitors response: status=${response.statusCode}, body=${response.body}',
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final visitorList = data['visitors'] ?? [];
-        if (visitorList is! List || visitorList.isEmpty) {
-          _visitors = [];
-          _checkedInCount = 0;
-          debugPrint('⚠️ No checked-in visitors found in response');
-        } else {
-          _visitors =
-              visitorList.map((v) {
-                final visitorMap = Map<String, dynamic>.from(
-                  v['visitor'] ?? {},
-                )..addAll({
-                  'id': v['id']?.toString() ?? '',
-                  'gate_id': gateId,
-                  'gate': deviceGate,
-                  'visitor_tag_id': v['visitor_tag_id']?.toString(),
-                  'tag_number': v['visitor_tag_number']?.toString(),
-                  'destination_id': v['visitor_destination_id']?.toString(),
-                  'destination': v['visitor_destination_name']?.toString(),
-                  'visit_type': v['host_type']?.toString(),
-                  'check_in_time': v['check_in_time']?.toString(),
-                  'check_out_time': v['check_out_time']?.toString(),
-                  'host':
-                      v['host_type'] == 'staff'
-                          ? {
+    debugPrint(
+      '📋 Checked-in visitors response: status=${response.statusCode}, body=${response.body}',
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final visitorList = data['visitors'] ?? [];
+      if (visitorList is! List || visitorList.isEmpty) {
+        _visitors = [];
+        _checkedInCount = 0;
+        debugPrint('⚠️ No checked-in visitors found in response');
+      } else {
+        _visitors =
+            visitorList.map((v) {
+              final visitorMap = Map<String, dynamic>.from(
+                v['visitor'] ?? {},
+              )..addAll({
+                'id': v['id']?.toString() ?? '',
+                'gate_id': gateId,
+                'gate': deviceGate,
+                'visitor_tag_id': v['visitor_tag_id']?.toString(),
+                'tag_number': v['visitor_tag_number']?.toString(),
+                'destination_id': v['visitor_destination_id']?.toString(),
+                'destination': v['visitor_destination_name']?.toString(),
+                'visit_type': v['host_type']?.toString(),
+                'check_in_time': v['check_in_time']?.toString(),
+                'check_out_time': v['check_out_time']?.toString(),
+                'host':
+                    v['host_type'] == 'staff'
+                        ? {
                             'name': v['host']?.toString() ?? 'N/A',
                             'phone': v['host_phone']?.toString() ?? 'N/A',
                             'email': v['host_email']?.toString() ?? 'N/A',
@@ -1156,45 +1210,48 @@ Future<void> registerVisitor(Visitor visitor) async {
                                 v['host_department']?.toString() ?? 'N/A',
                             'position': v['host_position']?.toString() ?? 'N/A',
                           }
-                          : null,
-                  'office_name': v['office_name']?.toString(),
-                  'office_phone': v['office_phone']?.toString(),
-                  'office_email': v['office_email']?.toString(),
-                  'office_department': v['office_department']?.toString(),
-                  'office_contact_person':
-                      v['office_contact_person']?.toString(),
-                  'had_appointment': v['had_appointment']?.toString(),
-                  'vehicle_type': v['vehicle_type']?.toString(),
-                  'vehicle_registration': v['vehicle_registration']?.toString(),
-                });
-                return Visitor.fromMap(visitorMap);
-              }).toList();
-          _checkedInCount = _visitors.length;
-          debugPrint(
-            '👥 Loaded ${_visitors.length} checked-in visitors for gate \'$deviceGate\' (ID: $gateId)',
-          );
-        }
-        await _saveCachedData();
-      } else {
-        _handleApiError(response, 'Failed to load checked-in visitors');
-        if (response.statusCode == 401) {
-          debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
-          throw VisitorAuthException(
-            'Authentication failed: Invalid or expired token',
-          );
-        }
-        throw VisitorNetworkException(
-          'Failed to load checked-in visitors: ${response.statusCode} - ${response.body}',
+                        : null,
+                'office_name': v['office_name']?.toString(),
+                'office_phone': v['office_phone']?.toString(),
+                'office_email': v['office_email']?.toString(),
+                'office_department': v['office_department']?.toString(),
+                'office_contact_person':
+                    v['office_contact_person']?.toString(),
+                'had_appointment': v['had_appointment'], // Boolean as per server
+                'appointment_details': v['appointment_details']?.toString(),
+                'remarks': v['remarks']?.toString(),
+                'vehicle_type': v['vehicle_type']?.toString(),
+                'vehicle_registration': v['vehicle_registration']?.toString(),
+                'gender': v['visitor']['gender']?.toString(), // Add gender
+              });
+              return Visitor.fromMap(visitorMap);
+            }).toList();
+        _checkedInCount = _visitors.length;
+        debugPrint(
+          '👥 Loaded ${_visitors.length} checked-in visitors for gate \'$deviceGate\' (ID: $gateId)',
         );
       }
-    } catch (e) {
-      debugPrint('❌ Error loading checked-in visitors: $e');
-      rethrow;
-    } finally {
-      _isLoading = false;
-      _safeNotifyListeners();
+      await _saveCachedData();
+    } else {
+      _handleApiError(response, 'Failed to load checked-in visitors');
+      if (response.statusCode == 401) {
+        debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
+        throw VisitorAuthException(
+          'Authentication failed: Invalid or expired token',
+        );
+      }
+      throw VisitorNetworkException(
+        'Failed to load checked-in visitors: ${response.statusCode} - ${response.body}',
+      );
     }
+  } catch (e) {
+    debugPrint('❌ Error loading checked-in visitors: $e');
+    rethrow;
+  } finally {
+    _isLoading = false;
+    _safeNotifyListeners();
   }
+}
 
   /// Loads visit count for the specified time range
   Future<void> logVisitCount({String timeRange = 'Today'}) async {

@@ -598,7 +598,7 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '$visitTypeLabel • ${visitor.hadAppointment ?? 'No appointment'}',
+                      '$visitTypeLabel • ${visitor.hadAppointment == true ? 'Has Appointment' : 'No Appointment'}',
                       style: GoogleFonts.afacad(
                         fontSize: isSmallScreen ? 12 : 13,
                         color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
@@ -736,11 +736,14 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                 const SizedBox(height: 16),
                 _buildDetailRow('ID Number', visitor.identificationNumber ?? 'N/A', _isDarkMode),
                 _buildDetailRow('Phone', visitor.phoneNumber ?? 'N/A', _isDarkMode),
+                _buildDetailRow('Gender', visitor.gender ?? 'N/A', _isDarkMode),
                 _buildDetailRow('Destination', destinationName, _isDarkMode),
                 _buildDetailRow('Check-in Time', visitor.checkInTime?.format(context) ?? 'Not available', _isDarkMode),
                 _buildDetailRow('Check-out Time', visitor.checkOutTime?.format(context) ?? 'Not checked out', _isDarkMode),
                 _buildDetailRow('Host Type', visitor.visitType ?? 'N/A', _isDarkMode),
-                _buildDetailRow('Appointment', (visitor.hadAppointment ?? 'No appointment').toString(), _isDarkMode),
+                _buildDetailRow('Appointment', visitor.hadAppointment == true ? 'Yes' : 'No', _isDarkMode),
+                _buildDetailRow('Appointment Details', visitor.appointmentDetails ?? 'N/A', _isDarkMode),
+                _buildDetailRow('Remarks', visitor.remarks ?? 'N/A', _isDarkMode),
                 if (visitor.vehicleType != null || visitor.vehicleRegistration != null)
                   _buildDetailRow(
                     'Vehicle',
@@ -752,21 +755,21 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                 if (visitor.host != null) ...[
                   _buildDetailRow('Host Name', visitor.host!['name'] ?? 'N/A', _isDarkMode),
                   _buildDetailRow('Host Phone', visitor.host!['phone'] ?? 'N/A', _isDarkMode),
-                  if (visitor.host!['email'] != null)
+                  if (visitor.host!['email'] != null && visitor.host!['email'] != 'N/A')
                     _buildDetailRow('Host Email', visitor.host!['email'] ?? 'N/A', _isDarkMode),
-                  if (visitor.host!['department'] != null)
+                  if (visitor.host!['department'] != null && visitor.host!['department'] != 'N/A')
                     _buildDetailRow('Host Department', visitor.host!['department'] ?? 'N/A', _isDarkMode),
-                  if (visitor.host!['position'] != null)
+                  if (visitor.host!['position'] != null && visitor.host!['position'] != 'N/A')
                     _buildDetailRow('Host Position', visitor.host!['position'] ?? 'N/A', _isDarkMode),
                 ],
-                if (visitor.officeName != null) ...[
+                if (visitor.officeName != null && visitor.officeName != 'N/A') ...[
                   _buildDetailRow('Office Name', visitor.officeName ?? 'N/A', _isDarkMode),
                   _buildDetailRow('Office Phone', visitor.officePhone ?? 'N/A', _isDarkMode),
-                  if (visitor.officeEmail != null)
+                  if (visitor.officeEmail != null && visitor.officeEmail != 'N/A')
                     _buildDetailRow('Office Email', visitor.officeEmail ?? 'N/A', _isDarkMode),
-                  if (visitor.officeDepartment != null)
+                  if (visitor.officeDepartment != null && visitor.officeDepartment != 'N/A')
                     _buildDetailRow('Office Department', visitor.officeDepartment ?? 'N/A', _isDarkMode),
-                  if (visitor.officeContactPerson != null)
+                  if (visitor.officeContactPerson != null && visitor.officeContactPerson != 'N/A')
                     _buildDetailRow('Office Contact', visitor.officeContactPerson ?? 'N/A', _isDarkMode),
                 ],
                 const SizedBox(height: 24),

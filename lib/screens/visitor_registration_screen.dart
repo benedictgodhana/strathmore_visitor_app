@@ -29,6 +29,11 @@ class VisitorNetworkException implements Exception {
   VisitorNetworkException(this.message);
 }
 
+class VisitorValidationException implements Exception {
+  final String message;
+  VisitorValidationException(this.message);
+}
+
 class VisitorRegistrationScreen extends StatefulWidget {
   const VisitorRegistrationScreen({super.key});
 
@@ -56,7 +61,7 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
   final _officeEmailController = TextEditingController();
   final _officeDepartmentController = TextEditingController();
   final _officeContactPersonController = TextEditingController();
-  final _appointmentDetailsController = TextEditingController(); // Updated: New controller for appointment details
+  final _appointmentDetailsController = TextEditingController();
   final _vehicleTypeController = TextEditingController();
   final _vehicleRegController = TextEditingController();
 
@@ -78,9 +83,8 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
   String? _selectedVisitorTagId;
   String? _selectedGate;
   String? _idValidationError;
-  String? _selectedFloorId;
   String? _selectedGender;
-  bool? _hadAppointment; // Updated: New state variable for had_appointment
+  bool? _hadAppointment;
   Timer? _debounceTimer;
   double _formProgress = 0.0;
 
@@ -140,7 +144,7 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
     _officeEmailController.dispose();
     _officeDepartmentController.dispose();
     _officeContactPersonController.dispose();
-    _appointmentDetailsController.dispose(); // Updated: Dispose new controller
+    _appointmentDetailsController.dispose();
     _vehicleTypeController.dispose();
     _vehicleRegController.dispose();
     _debounceTimer?.cancel();
@@ -148,7 +152,7 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
   }
 
   void _updateFormProgress() {
-    int totalFields = 11; // Updated: Increased to account for had_appointment
+    int totalFields = 11;
     int filledFields = 0;
 
     if (_idNumberController.text.isNotEmpty) filledFields++;
@@ -160,7 +164,7 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
     if (_selectedDestinationId != null) filledFields++;
     if (_selectedVisitorTagId != null) filledFields++;
     if (_selectedGate != null) filledFields++;
-    if (_hadAppointment != null) filledFields++; // Updated: Count had_appointment
+    if (_hadAppointment != null) filledFields++;
     if (_visitType == 'staff' && _hostNameController.text.isNotEmpty) filledFields++;
     else if (_visitType == 'office' && _officeNameController.text.isNotEmpty) filledFields++;
 
@@ -268,15 +272,12 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
           if (response != null && (response['exists'] == true || response['exists'] == 'true') && response['visitor'] != null) {
             final visitorData = response['visitor'] as Map<String, dynamic>;
             final visitorStatus = response['visitorStatus']?.toString() ?? 'unknown';
-            debugPrint('Visitor status: isCheckedIn=${visitorStatus == 'active'}, visitorStatus=$visitorStatus');
-            if (visitorStatus == 'active') {
+            debugPrint('Visitor status: isCheckedIn=${response['alreadyCheckedIn']}, visitorStatus=$visitorStatus');
+            if (response['alreadyCheckedIn'] == true) {
               _idValidationError = 'Visitor is currently active at this gate';
               _showExistingVisitorDialog(visitorData, visitorStatus: visitorStatus);
-            } else if (visitorStatus == 'completed') {
-              _idValidationError = 'Visitor with ID $idNumber has completed their visit';
-              _showExistingVisitorDialog(visitorData, visitorStatus: visitorStatus);
             } else {
-              _idValidationError = 'Visitor with ID $idNumber already exists';
+              _idValidationError = null; // Allow proceeding for checked-out visitors
               _showExistingVisitorDialog(visitorData, visitorStatus: visitorStatus);
             }
           } else {
@@ -699,7 +700,9 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                     style: GoogleFonts.afacad(),
                   ),
                 Text(
-                  visitorStatus == 'active' ? 'This visitor is currently active at this gate.' : 'This visitor has been registered before. Would you like to create a new visit or start a new registration?',
+                  visitorStatus == 'active'
+                      ? 'This visitor is currently active at this gate.'
+                      : 'This visitor has been registered before. Would you like to create a new visit or start a new registration?',
                   style: GoogleFonts.afacad(),
                 ),
               ],
@@ -720,11 +723,10 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                         _guardianPhoneController.text = visitorData['guardian_phone']?.toString().replaceFirst('+254', '') ?? '';
                       }
                       _idValidationError = null;
+                      _currentStep = 1; // Move to personal details step
                     });
+                    _updateFormProgress();
                     Navigator.of(context).pop();
-                    if (_idFormKey.currentState?.validate() ?? false) {
-                      setState(() => _currentStep += 1);
-                    }
                   }
                 },
                 child: Text('Create New Visit', style: GoogleFonts.afacad()),
@@ -740,6 +742,8 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                       _countryController.text = 'Kenya';
                       _selectedGender = null;
                       _isMinor = false;
+                      _idNumberController.clear();
+                      _selectedIdType = 'national_id';
                     });
                     Navigator.of(context).pop();
                   }
@@ -1009,9 +1013,8 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                         _officeEmailController.clear();
                         _officeDepartmentController.clear();
                         _officeContactPersonController.clear();
-                        _selectedFloorId = null;
-                        _hadAppointment = null; // Updated: Reset had_appointment
-                        _appointmentDetailsController.clear(); // Updated: Reset appointment details
+                        _hadAppointment = null;
+                        _appointmentDetailsController.clear();
                       });
                       _updateFormProgress();
                     }
@@ -1019,19 +1022,7 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                   validator: (value) => value == null ? 'Please select a visit type' : null,
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _selectedFloorId,
-                  decoration: _buildInputDecoration('Floor', Icons.stairs_outlined, isRequired: false, solo: true),
-                  items: visitorProvider.floors?.isNotEmpty ?? false
-                      ? visitorProvider.floors!.map((floor) => DropdownMenuItem(value: floor['id']?.toString(), child: Text(floor['name']?.toString() ?? 'Floor ${floor['id']}', style: GoogleFonts.afacad()))).toList()
-                      : [const DropdownMenuItem(value: null, child: Text('No floors available', style: TextStyle(fontFamily: 'afacad')))],
-                  onChanged: (value) {
-                    if (mounted) {
-                      setState(() => _selectedFloorId = value);
-                      _updateFormProgress();
-                    }
-                  },
-                ),
+              
                 const SizedBox(height: 16),
                 if (_visitType == 'staff') ...[
                   TextFormField(
@@ -1133,7 +1124,7 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                       setState(() {
                         _hadAppointment = value == 'true';
                         if (!_hadAppointment!) {
-                          _appointmentDetailsController.clear(); // Clear details if no appointment
+                          _appointmentDetailsController.clear();
                         }
                         _updateFormProgress();
                       });
@@ -1147,7 +1138,7 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                   decoration: _buildInputDecoration('Appointment Details', Icons.event_note_outlined, isRequired: false, solo: true),
                   keyboardType: TextInputType.text,
                   maxLines: 2,
-                  enabled: _hadAppointment == true, // Disable if no appointment
+                  enabled: _hadAppointment == true,
                   onChanged: (value) => _updateFormProgress(),
                 ),
               ],
@@ -1362,12 +1353,20 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
           return;
         }
 
-        // Show confirmation dialog before registration
+        // Check if visitor exists
+        final response = await visitorProvider.checkExistingVisitor(_idNumberController.text.trim(), _selectedIdType);
+        bool isExistingVisitor = response != null && (response['exists'] == true || response['exists'] == 'true') && response['visitor'] != null;
+        bool isCheckedIn = response != null && response['alreadyCheckedIn'] == true;
+
+        // Show confirmation dialog
         bool? confirm = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text('Confirm Registration', style: GoogleFonts.afacad(fontWeight: FontWeight.bold)),
-            content: Text('Are you sure you want to register this visitor?', style: GoogleFonts.afacad()),
+            title: Text(isExistingVisitor ? 'Confirm New Visit' : 'Confirm Registration', style: GoogleFonts.afacad(fontWeight: FontWeight.bold)),
+            content: Text(
+              isExistingVisitor ? 'Create a new visit for this existing visitor?' : 'Are you sure you want to register this visitor?',
+              style: GoogleFonts.afacad(),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
@@ -1388,67 +1387,119 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
         }
 
         try {
-          // Parse IDs to ensure they are integers
+          // Parse IDs
           final destinationId = int.tryParse(_selectedDestinationId ?? '');
           final visitorTagId = int.tryParse(_selectedVisitorTagId ?? '');
           final gateIdParsed = int.tryParse(_selectedGate ?? '');
-          final floorId = _selectedFloorId != null ? int.tryParse(_selectedFloorId!) : null;
 
           if (destinationId == null || visitorTagId == null || gateIdParsed == null) {
             throw VisitorNetworkException('Invalid ID format: destinationId=$destinationId, visitorTagId=$visitorTagId, gateId=$gateIdParsed');
           }
 
-          final visitor = Visitor(
-            id: 0, // For new visitors, set id to 0; API will assign the actual ID
-            identificationType: _selectedIdType,
-            identificationNumber: _idNumberController.text.trim(),
-            name: _nameController.text.trim(),
-            phoneNumber: _phoneCountryCode + _phoneController.text.trim(),
-            guardianPhone: _isMinor ? _phoneCountryCode + _guardianPhoneController.text.trim() : null,
-            visitType: _visitType,
-            host: _visitType == 'staff'
-                ? {
-                    'name': _hostNameController.text.trim(),
-                    'phone': _phoneCountryCode + _hostPhoneController.text.trim(),
-                    'email': _hostEmailController.text.isNotEmpty ? _hostEmailController.text.trim() : '',
-                    'department': _hostDepartmentController.text.isNotEmpty ? _hostDepartmentController.text.trim() : '',
-                    'position': _hostPositionController.text.isNotEmpty ? _hostPositionController.text.trim() : '',
-                    'id': '',
-                    'createdAt': DateTime.now().toIso8601String(),
-                  }
-                : null,
-            officeName: _visitType == 'office' ? _officeNameController.text.trim() : null,
-            officePhone: _visitType == 'office' ? _phoneCountryCode + _officePhoneController.text.trim() : null,
-            officeEmail: _visitType == 'office' && _officeEmailController.text.isNotEmpty ? _officeEmailController.text.trim() : null,
-            officeDepartment: _visitType == 'office' && _officeDepartmentController.text.isNotEmpty ? _officeDepartmentController.text.trim() : null,
-            officeContactPerson: _visitType == 'office' ? _officeContactPersonController.text.trim() : null,
-            hadAppointment: _hadAppointment ?? false, // Updated: Use boolean value
-            vehicleType: _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
-            vehicleRegistration: _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
-            destinationId: destinationId,
-            visitorTagId: visitorTagId,
-            gateId: gateIdParsed,
-            isMinor: _isMinor,
-            phoneCountryCode: _phoneCountryCode,
-            country: _countryController.text.trim(),
-            floorId: floorId,
-            gender: _selectedGender,
-          );
+          if (isExistingVisitor && !isCheckedIn) {
+            // Create visit for existing visitor
+            final visitorId = int.tryParse(response['visitor']['id'].toString());
+            if (visitorId == null) {
+              throw VisitorValidationException('Invalid visitor ID for existing visitor');
+            }
 
-          debugPrint('📤 Registering new visitor with payload: ${jsonEncode(visitor.toMap())}');
-          await visitorProvider.registerVisitor(visitor);
+            final visit = {
+              'visitor_id': visitorId,
+              'visit_type': _visitType,
+              'visitor_destination_id': destinationId,
+              'visitor_tag_id': visitorTagId,
+              'gate_id': gateIdParsed,
+              'had_appointment': _hadAppointment,
+              'appointment_details': _appointmentDetailsController.text.isNotEmpty ? _appointmentDetailsController.text.trim() : null,
+              'vehicle_type': _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
+              'vehicle_registration': _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
+              if (_visitType == 'staff') ...{
+                'host': _hostNameController.text.trim(),
+                'host_phone': _phoneCountryCode + _hostPhoneController.text.trim(),
+                'host_email': _hostEmailController.text.isNotEmpty ? _hostEmailController.text.trim() : null,
+                'host_department': _hostDepartmentController.text.isNotEmpty ? _hostDepartmentController.text.trim() : null,
+                'host_position': _hostPositionController.text.isNotEmpty ? _hostPositionController.text.trim() : null,
+              },
+              if (_visitType == 'office') ...{
+                'office_name': _officeNameController.text.trim(),
+                'office_phone': _phoneCountryCode + _officePhoneController.text.trim(),
+                'office_email': _officeEmailController.text.isNotEmpty ? _officeEmailController.text.trim() : null,
+                'office_department': _officeDepartmentController.text.isNotEmpty ? _officeDepartmentController.text.trim() : null,
+                'office_contact_person': _officeContactPersonController.text.trim(),
+              },
+            };
 
-          if (mounted) {
-            setState(() => _isLoading = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Visitor registered successfully!', style: GoogleFonts.afacad()),
-                backgroundColor: Colors.green,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+            debugPrint('📤 Creating visit for existing visitor with payload: ${jsonEncode(visit)}');
+            await visitorProvider.createVisitForExistingVisitor(visit);
+
+            if (mounted) {
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Visit created successfully for existing visitor!', style: GoogleFonts.afacad()),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              );
+              Navigator.of(context).pop();
+            }
+          } else if (isExistingVisitor && isCheckedIn) {
+            throw VisitorValidationException('Visitor is currently active. Cannot create a new visit until checked out.');
+          } else {
+            // Register new visitor
+            final visitor = Visitor(
+              id: 0,
+              identificationType: _selectedIdType,
+              identificationNumber: _idNumberController.text.trim(),
+              name: _nameController.text.trim(),
+              phoneNumber: _phoneCountryCode + _phoneController.text.trim(),
+              guardianPhone: _isMinor ? _phoneCountryCode + _guardianPhoneController.text.trim() : null,
+              visitType: _visitType,
+              host: _visitType == 'staff'
+                  ? {
+                      'name': _hostNameController.text.trim(),
+                      'phone': _phoneCountryCode + _hostPhoneController.text.trim(),
+                      'email': _hostEmailController.text.isNotEmpty ? _hostEmailController.text.trim() : '',
+                      'department': _hostDepartmentController.text.isNotEmpty ? _hostDepartmentController.text.trim() : '',
+                      'position': _hostPositionController.text.isNotEmpty ? _hostPositionController.text.trim() : '',
+                      'id': '',
+                      'createdAt': DateTime.now().toIso8601String(),
+                    }
+                  : null,
+              officeName: _visitType == 'office' ? _officeNameController.text.trim() : null,
+              officePhone: _visitType == 'office' ? _phoneCountryCode + _officePhoneController.text.trim() : null,
+              officeEmail: _visitType == 'office' && _officeEmailController.text.isNotEmpty ? _officeEmailController.text.trim() : null,
+              officeDepartment: _visitType == 'office' && _officeDepartmentController.text.isNotEmpty ? _officeDepartmentController.text.trim() : null,
+              officeContactPerson: _visitType == 'office' ? _officeContactPersonController.text.trim() : null,
+              hadAppointment: _hadAppointment ?? false,
+              appointmentDetails: _appointmentDetailsController.text.isNotEmpty ? _appointmentDetailsController.text.trim() : null,
+              vehicleType: _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
+              vehicleRegistration: _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
+              destinationId: destinationId,
+              visitorTagId: visitorTagId,
+              gateId: gateIdParsed,
+              isMinor: _isMinor,
+              phoneCountryCode: _phoneCountryCode,
+              country: _countryController.text.trim(),
+              gender: _selectedGender,
             );
-            Navigator.of(context).pop();
+
+            debugPrint('📤 Registering new visitor with payload: ${jsonEncode(visitor.toMap())}');
+            await visitorProvider.registerVisitor(visitor);
+
+            if (mounted) {
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Visitor registered successfully!', style: GoogleFonts.afacad()),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              );
+              Navigator.of(context).pop();
+            }
           }
         } catch (e) {
           if (mounted) {
@@ -1457,8 +1508,8 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
             if (e is VisitorAuthException) {
               _showErrorDialog('Session expired. Please log in again.');
               Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-            } else if (e is VisitorNetworkException) {
-              String errorMessage = e.message;
+            } else if (e is VisitorNetworkException || e is VisitorValidationException) {
+              String errorMessage = e.toString();
               if (errorMessage.contains('422')) {
                 try {
                   final errorBody = jsonDecode(errorMessage.split(' - ').last);
@@ -1482,76 +1533,10 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                 } else if (errorMessage.contains('gate_id') || errorMessage.contains('visitor_gates')) {
                   _showErrorDialog('Invalid gate configuration. Please contact the administrator or try again.');
                   await _loadInitialData();
-                } else if (errorMessage.contains('identification_number')) {
-                  final response = await visitorProvider.checkExistingVisitor(_idNumberController.text.trim(), _selectedIdType);
-                  if (response != null && (response['exists'] == true || response['exists'] == 'true') && response['visitor'] != null) {
-                    final existingVisitor = response['visitor'] as Map<String, dynamic>;
-                    final visitorStatus = response['visitorStatus']?.toString() ?? 'unknown';
-                    if (visitorStatus == 'active') {
-                      _showErrorDialog('Visitor is currently active. Cannot register a new visit until checked out.');
-                      return;
-                    }
-
-                    final visitorId = int.tryParse(existingVisitor['id'].toString());
-                    final destinationId = int.tryParse(_selectedDestinationId ?? '');
-                    final visitorTagId = int.tryParse(_selectedVisitorTagId ?? '');
-                    final gateIdParsed = int.tryParse(_selectedGate ?? '');
-
-                    if (visitorId == null || destinationId == null || visitorTagId == null || gateIdParsed == null) {
-                      _showErrorDialog('Invalid ID format for existing visitor. Please try again.');
-                      return;
-                    }
-
-                    final visit = {
-                      'visitor_id': visitorId,
-                      'visit_type': _visitType,
-                      'visitor_destination_id': destinationId,
-                      'visitor_tag_id': visitorTagId,
-                      'gate_id': gateIdParsed,
-                      'had_appointment': _hadAppointment.toString(), // Updated: Send as string "true" or "false"
-                      'appointment_details': _appointmentDetailsController.text.isNotEmpty ? _appointmentDetailsController.text.trim() : null, // Updated: Include appointment details
-                      'vehicle_type': _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
-                      'vehicle_registration': _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
-                      if (_visitType == 'staff') ...{
-                        'host': _hostNameController.text.trim(),
-                        'host_phone': _phoneCountryCode + _hostPhoneController.text.trim(),
-                        'host_email': _hostEmailController.text.isNotEmpty ? _hostEmailController.text.trim() : null,
-                        'host_department': _hostDepartmentController.text.isNotEmpty ? _hostDepartmentController.text.trim() : null,
-                        'host_position': _hostPositionController.text.isNotEmpty ? _hostPositionController.text.trim() : null,
-                      },
-                      if (_visitType == 'office') ...{
-                        'office_name': _officeNameController.text.trim(),
-                        'office_phone': _phoneCountryCode + _officePhoneController.text.trim(),
-                        'office_email': _officeEmailController.text.isNotEmpty ? _officeEmailController.text.trim() : null,
-                        'office_department': _officeDepartmentController.text.isNotEmpty ? _officeDepartmentController.text.trim() : null,
-                        'office_contact_person': _officeContactPersonController.text.trim(),
-                      },
-                    };
-
-                    debugPrint('📤 Creating visit for existing visitor with payload: ${jsonEncode(visit)}');
-                    try {
-                      await visitorProvider.createVisitForExistingVisitor(visit);
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Visit created successfully for existing visitor!', style: GoogleFonts.afacad()),
-                            backgroundColor: Colors.green,
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        );
-                        Navigator.of(context).pop();
-                      }
-                    } catch (visitError) {
-                      _showErrorDialog('Failed to create visit for existing visitor: $visitError');
-                    }
-                  } else {
-                    _showErrorDialog('Failed to register visitor: $errorMessage. Please try again or contact the administrator.');
-                  }
                 } else {
                   _showErrorDialog(errorMessage);
                 }
-              } else if (e.toString().contains('500')) {
+              } else if (errorMessage.contains('500')) {
                 _showErrorDialog('Server error occurred. Please contact the administrator.');
               } else {
                 _showErrorDialog('Registration failed: $e');

@@ -30,8 +30,9 @@ class Visitor {
   final String? appointmentDetails; // Added: New field for appointment details
   final String? vehicleType;
   final String? vehicleRegistration;
-  final int? floorId;
   final String? gender;
+  final String? remarks;
+
 
   String get hostType =>
       visitType.toLowerCase() == 'staff' ? 'staff' : 'office';
@@ -66,8 +67,8 @@ class Visitor {
     this.appointmentDetails, // Added
     this.vehicleType,
     this.vehicleRegistration,
-    this.floorId,
     this.gender,
+    this.remarks,
   });
 
   static DateTime? parseDate(dynamic value, {bool isCheckIn = false}) {
@@ -238,8 +239,8 @@ class Visitor {
           map['vehicle_info']?['vehicle_type']?.toString(),
       vehicleRegistration: map['vehicle_registration']?.toString() ??
           map['vehicle_info']?['vehicle_registration']?.toString(),
-      floorId: parseInt(map['floor_id'], 'floor_id'),
       gender: map['gender']?.toString(),
+      remarks: map['remarks']?.toString(),
     );
   }
 
@@ -275,7 +276,6 @@ class Visitor {
       'appointment_details': appointmentDetails,
       'vehicle_type': vehicleType,
       'vehicle_registration': vehicleRegistration,
-      'floor_id': floorId,
       'gender': gender,
     }..removeWhere(
         (key, value) => value == null || (value is String && value.isEmpty),
