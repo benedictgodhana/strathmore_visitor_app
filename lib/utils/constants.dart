@@ -8,7 +8,15 @@ class AppColors {
   static const Color error = Color(0xFFF44336);
   static const Color background = Color(0xFFFFFFFF);
 
-  static const Color info = Color(0xFFFFFFFF); // Updated to white
+  static const Color info = Color(0xFFFFFFFF);
+
+  static var darkBackground;
+
+  static var lightBackground;
+
+  static var backgroundDark;
+
+  static var backgroundLight; // Updated to white
 }
 
 class AppStrings {
@@ -16,5 +24,5 @@ class AppStrings {
   static const String universityName = 'Strathmore University';
   static const String welcomeMessage = 'Welcome to Strathmore University';
   static const String apiBaseUrl =
-      'http://10.42.0.1:8000'; // Added API base URL
+      'http://192.168.100.3:8000'; // Added API base URL
 }

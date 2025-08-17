@@ -1,63 +1,44 @@
 class Validators {
-  static var validatePhoneNumber;
-
-  static var validateCountry;
-
-  static var validateRequired;
+  static String? validatePhoneNumber(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Phone number is required';
+    }
+    if (!RegExp(r'^\d{9,10}$').hasMatch(value.trim())) {
+      return 'Enter a valid phone number (9-10 digits)';
+    }
+    return null;
+  }
 
   static String? validateName(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter your name';
+    if (value == null || value.trim().isEmpty) {
+      return 'Name is required';
     }
-    if (value.length < 2) {
-      return 'Name must be at least 2 characters long';
+    if (!RegExp(r"^[A-Za-z\s-']+$").hasMatch(value.trim()) || value.trim().split(' ').length < 1) {
+      return 'Enter a valid name';
+    }
+    return null;
+  }
+
+  static String? validateCountry(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Country is required';
+    }
+    return null;
+  }
+
+  static String? validateRequired(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'This field is required';
     }
     return null;
   }
 
   static String? validateEmail(String? value) {
-    if (value == null || value.isEmpty) {
+    if (value == null || value.trim().isEmpty) {
       return null; // Email is optional
     }
-    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-      return 'Please enter a valid email address';
-    }
-    return null;
-  }
-
-  static String? validatePhone(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter your phone number';
-    }
-    if (!RegExp(r'^\+?[\d\s\-\(\)]+$').hasMatch(value)) {
-      return 'Please enter a valid phone number';
-    }
-    return null;
-  }
-
-  static String? validateIdNumber(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter your ID number';
-    }
-    if (value.length < 5) {
-      return 'Please enter a valid ID number';
-    }
-    return null;
-  }
-
-  static String? validateCompany(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter your company/organization';
-    }
-    return null;
-  }
-
-  static String? validatePurpose(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter the purpose of your visit';
-    }
-    if (value.length < 10) {
-      return 'Please provide more details about your visit';
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
+      return 'Enter a valid email address';
     }
     return null;
   }

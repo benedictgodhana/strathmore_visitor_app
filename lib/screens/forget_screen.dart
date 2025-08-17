@@ -70,7 +70,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
         backgroundColor: Colors.white,
         title: Text(
           'Reset Error',
-          style: GoogleFonts.lexend(
+          style: GoogleFonts.afacad(
             fontSize: 20,
             fontWeight: FontWeight.w700,
             color: AppColors.error,
@@ -78,7 +78,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
         ),
         content: Text(
           message,
-          style: GoogleFonts.lexend(
+          style: GoogleFonts.afacad(
             fontSize: 16,
             fontWeight: FontWeight.w400,
             color: Colors.grey.shade600,
@@ -89,7 +89,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
             onPressed: () => Navigator.of(context).pop(),
             child: Text(
               'OK',
-              style: GoogleFonts.lexend(
+              style: GoogleFonts.afacad(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: AppColors.primaryBlue,
@@ -104,7 +104,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
               },
               child: Text(
                 'Retry',
-                style: GoogleFonts.lexend(
+                style: GoogleFonts.afacad(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: AppColors.primaryBlue,
@@ -155,7 +155,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                         SizedBox(height: 16),
                         Text(
                           'RESET PASSWORD',
-                          style: GoogleFonts.lexend(
+                          style: GoogleFonts.afacad(
                             fontSize: isSmallScreen ? 24 : 28,
                             fontWeight: FontWeight.w700,
                             color: AppColors.primaryBlue,
@@ -165,7 +165,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                         SizedBox(height: 8),
                         Text(
                           'Enter your email to receive a reset link',
-                          style: GoogleFonts.lexend(
+                          style: GoogleFonts.afacad(
                             fontSize: isSmallScreen ? 14 : 16,
                             fontWeight: FontWeight.w500,
                             color: Colors.grey.shade600,
@@ -177,7 +177,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                           controller: _emailController,
                           decoration: InputDecoration(
                             labelText: 'Email',
-                            labelStyle: GoogleFonts.lexend(
+                            labelStyle: GoogleFonts.afacad(
                               color: Colors.grey.shade600,
                               fontWeight: FontWeight.w600,
                             ),
@@ -240,7 +240,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                                     alignment: Alignment.center,
                                     child: Text(
                                       'Send Reset Link',
-                                      style: GoogleFonts.lexend(
+                                      style: GoogleFonts.afacad(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w600,
                                         color: Colors.white,
@@ -259,7 +259,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                             icon: Icon(Icons.arrow_back, color: AppColors.primaryBlue, size: 18),
                             label: Text(
                               'Back to Login',
-                              style: GoogleFonts.lexend(
+                              style: GoogleFonts.afacad(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 color: AppColors.primaryBlue,

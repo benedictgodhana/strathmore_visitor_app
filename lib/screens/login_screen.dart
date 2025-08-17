@@ -151,7 +151,7 @@ class _LoginScreenState extends State<LoginScreen>
             backgroundColor: Colors.white,
             title: Text(
               'Login Error',
-              style: GoogleFonts.lexend(
+              style: GoogleFonts.afacad(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
                 color: AppColors.error,
@@ -159,7 +159,7 @@ class _LoginScreenState extends State<LoginScreen>
             ),
             content: Text(
               message,
-              style: GoogleFonts.lexend(
+              style: GoogleFonts.afacad(
                 fontSize: 16,
                 fontWeight: FontWeight.w400,
                 color: Colors.grey.shade600,
@@ -170,7 +170,7 @@ class _LoginScreenState extends State<LoginScreen>
                 onPressed: () => Navigator.of(context).pop(),
                 child: Text(
                   'OK',
-                  style: GoogleFonts.lexend(
+                  style: GoogleFonts.afacad(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppColors.primaryBlue,
@@ -185,7 +185,7 @@ class _LoginScreenState extends State<LoginScreen>
                   },
                   child: Text(
                     'Retry',
-                    style: GoogleFonts.lexend(
+                    style: GoogleFonts.afacad(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: AppColors.primaryBlue,
@@ -375,7 +375,7 @@ class _LoginScreenState extends State<LoginScreen>
                           SizedBox(height: 16),
                           Text(
                             'VISITOR MANAGEMENT',
-                            style: GoogleFonts.lexend(
+                            style: GoogleFonts.afacad(
                               fontSize: isSmallScreen ? 24 : 28,
                               fontWeight: FontWeight.w700,
                               color: AppColors.primaryBlue,
@@ -387,7 +387,7 @@ class _LoginScreenState extends State<LoginScreen>
                             controller: _usernameController,
                             decoration: InputDecoration(
                               labelText: 'Username',
-                              labelStyle: GoogleFonts.lexend(
+                              labelStyle: GoogleFonts.afacad(
                                 color: Colors.grey.shade600,
                               ),
                               prefixIcon: Icon(
@@ -430,7 +430,7 @@ class _LoginScreenState extends State<LoginScreen>
                             obscureText: _obscurePassword,
                             decoration: InputDecoration(
                               labelText: 'Password',
-                              labelStyle: GoogleFonts.lexend(
+                              labelStyle: GoogleFonts.afacad(
                                 color: Colors.grey.shade600,
                               ),
                               prefixIcon: Icon(
@@ -491,7 +491,7 @@ class _LoginScreenState extends State<LoginScreen>
                                     : null,
                             decoration: InputDecoration(
                               labelText: 'Select Gate',
-                              labelStyle: GoogleFonts.lexend(
+                              labelStyle: GoogleFonts.afacad(
                                 color: Colors.grey.shade600,
                               ),
                               prefixIcon: Icon(
@@ -525,7 +525,7 @@ class _LoginScreenState extends State<LoginScreen>
                                         value: null,
                                         child: Text(
                                           'Loading gates...',
-                                          style: GoogleFonts.lexend(),
+                                          style: GoogleFonts.afacad(),
                                         ),
                                         enabled: false,
                                       ),
@@ -536,7 +536,7 @@ class _LoginScreenState extends State<LoginScreen>
                                         value: 'Default Gate',
                                         child: Text(
                                           'Default Gate',
-                                          style: GoogleFonts.lexend(),
+                                          style: GoogleFonts.afacad(),
                                         ),
                                       ),
                                     ]
@@ -547,7 +547,7 @@ class _LoginScreenState extends State<LoginScreen>
                                         value: gateName,
                                         child: Text(
                                           gateName,
-                                          style: GoogleFonts.lexend(
+                                          style: GoogleFonts.afacad(
                                             fontSize: 14,
                                             color: Colors.grey.shade800,
                                           ),
@@ -588,7 +588,7 @@ class _LoginScreenState extends State<LoginScreen>
                             },
                             hint: Text(
                               'Select a gate',
-                              style: GoogleFonts.lexend(),
+                              style: GoogleFonts.afacad(),
                             ),
                           ),
                           if (visitorProvider.gates.isEmpty &&
@@ -604,7 +604,7 @@ class _LoginScreenState extends State<LoginScreen>
                               ),
                               child: Text(
                                 'Retry Loading Gates',
-                                style: GoogleFonts.lexend(
+                                style: GoogleFonts.afacad(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.white,
@@ -627,7 +627,7 @@ class _LoginScreenState extends State<LoginScreen>
                               },
                               child: Text(
                                 'Forgot Password?',
-                                style: GoogleFonts.lexend(
+                                style: GoogleFonts.afacad(
                                   fontSize: 14,
                                   color: AppColors.primaryBlue,
                                   fontWeight: FontWeight.w600,
@@ -672,7 +672,7 @@ class _LoginScreenState extends State<LoginScreen>
                                     alignment: Alignment.center,
                                     child: Text(
                                       'Login',
-                                      style: GoogleFonts.lexend(
+                                      style: GoogleFonts.afacad(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w600,
                                         color: Colors.white,

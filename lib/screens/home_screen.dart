@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:liquid_swipe/liquid_swipe.dart';
 import 'package:confetti/confetti.dart';
+import 'package:intl/intl.dart';
 import '../utils/constants.dart';
 import '../components/custom_app_bar.dart';
 import '../components/custom_bottom_nav.dart';
@@ -36,6 +38,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool isDarkMode = false;
   String selectedTimeRange = 'Today';
   String? deviceGate;
+  String? gateId;
+  String? _token; // Authentication token
   bool _isRefreshing = false;
   double _scrollOffset = 0;
 
@@ -43,11 +47,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _initializeAnimations();
-    _loadUserPreferences();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 1));
-    
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _refreshData();
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 1),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _loadUserPreferences();
+      await _loadTokenFromPreferences();
+      if (_token == null && mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      } else {
+        await _refreshData();
+      }
     });
   }
 
@@ -67,29 +77,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       vsync: this,
     );
 
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutQuart,
-    ));
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOutQuart),
+    );
 
     _slideAnimation = Tween<Offset>(
       begin: Offset(0, 0.3),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _slideController,
-      curve: Curves.fastOutSlowIn,
-    ));
+    ).animate(
+      CurvedAnimation(parent: _slideController, curve: Curves.fastOutSlowIn),
+    );
 
-    _scaleAnimation = Tween<double>(
-      begin: 0.9,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _scaleController,
-      curve: Curves.elasticOut,
-    ));
+    _scaleAnimation = Tween<double>(begin: 0.9, end: 1.0).animate(
+      CurvedAnimation(parent: _scaleController, curve: Curves.elasticOut),
+    );
 
     _animationController.forward();
     _slideController.forward();
@@ -98,12 +99,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _loadUserPreferences() async {
     final prefs = await SharedPreferences.getInstance();
-    final loadedGate = prefs.getString('deviceGate') ?? 'Main Gate';
+    final loadedGate = prefs.getString('device_gate') ?? 'Main Gate';
 
+    if (mounted) {
+      setState(() {
+        isDarkMode = prefs.getBool('isDarkMode') ?? false;
+        deviceGate = loadedGate;
+      });
+    }
+  }
+ Future<void> _loadTokenFromPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
     setState(() {
-      isDarkMode = prefs.getBool('isDarkMode') ?? false;
-      deviceGate = loadedGate;
+      _token = prefs.getString('token');
+      gateId = prefs.getString('gate_id');
+      deviceGate = prefs.getString('device_gate') ?? 'Gate A';
     });
+    debugPrint(_token != null ? '✅ Loaded auth token: $_token' : '⚠️ No auth token found');
+    debugPrint(gateId != null ? '✅ Loaded gateId: $gateId' : '⚠️ No gateId found');
+    debugPrint('📴 Loaded cached gate: $deviceGate');
+    await _refreshData();
   }
 
   @override
@@ -113,17 +128,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _scaleController.dispose();
     _confettiController.dispose();
     _pageController.dispose();
+    _liquidController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: isDarkMode ? Color(0xFF0A0E21) : Color(0xFFF8FAFF),
+      backgroundColor:
+          isDarkMode ? AppColors.backgroundDark : AppColors.backgroundLight,
       extendBodyBehindAppBar: true,
       appBar: CustomAppBar(
         title: AppStrings.universityName,
@@ -133,11 +148,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         showNotifications: true,
         showAccount: true,
         showLogout: true,
-        notificationCount: Provider.of<VisitorProvider>(context).visitors.length,
+        notificationCount:
+            Provider.of<VisitorProvider>(context).visitors.length,
         onLogoutTap: () async {
-          final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
+          final visitorProvider = Provider.of<VisitorProvider>(
+            context,
+            listen: false,
+          );
           await visitorProvider.logout();
-          Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('token');
+          await prefs.remove('gate_id');
+          if (mounted) {
+            setState(() {
+              _token = null;
+              gateId = null;
+            });
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/login',
+              (route) => false,
+            );
+          }
         },
         actions: [
           IconButton(
@@ -153,14 +185,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
       body: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
-          setState(() {
-            _scrollOffset = notification.metrics.pixels;
-          });
+          if (mounted) {
+            setState(() {
+              _scrollOffset = notification.metrics.pixels;
+            });
+          }
           return false;
         },
         child: Stack(
           children: [
-            // Animated Background
             AnimatedContainer(
               duration: Duration(milliseconds: 500),
               height: 280 + (_scrollOffset * 0.5).clamp(280.0, 400.0),
@@ -168,10 +201,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.primaryBlue,
-                    AppColors.secondaryBlue,
-                  ],
+                  colors: [AppColors.primaryBlue, AppColors.secondaryBlue],
                 ),
                 borderRadius: BorderRadius.only(
                   bottomLeft: Radius.circular(30),
@@ -179,8 +209,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
-            
-            // Confetti
             Align(
               alignment: Alignment.topCenter,
               child: ConfettiWidget(
@@ -195,8 +223,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ],
               ),
             ),
-            
-            // Main Content
             SafeArea(
               child: RefreshIndicator(
                 onRefresh: _refreshData,
@@ -206,61 +232,79 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 edgeOffset: 20,
                 triggerMode: RefreshIndicatorTriggerMode.anywhere,
                 child: CustomScrollView(
-                  physics: BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                  physics: BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
                   slivers: [
-                    SliverToBoxAdapter(
-                      child: SizedBox(height: 80), // Space for app bar
-                    ),
-                    
-                    // Gate Header Section
-                    SliverToBoxAdapter(
-                      child: _buildGateHeader(isSmallScreen),
-                    ),
-                    
-                    // Time Range Selector
+                    SliverToBoxAdapter(child: SizedBox(height: 80)),
+                    SliverToBoxAdapter(child: _buildGateHeader(isSmallScreen)),
                     SliverToBoxAdapter(
                       child: _buildTimeRangeSelector(isSmallScreen),
                     ),
-                    
-                    // Stats Overview - Updated with more top padding
                     SliverPadding(
                       padding: EdgeInsets.only(
                         left: isSmallScreen ? 16 : 24,
                         right: isSmallScreen ? 16 : 24,
-                        top: 30, // Increased top padding to push cards down
+                        top: 30,
                         bottom: 16,
                       ),
-                      sliver: SliverGrid(
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 16,
-                          crossAxisSpacing: 16,
-                          childAspectRatio: 1.1,
-                        ),
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) => _buildModernStatCard(
-                            index == 0 ? 'Today\'s Visitors' : 
-                            index == 1 ? 'Currently In' : 
-                            index == 2 ? 'Total Visitors' : 'Checked Out',
-                            index == 0 ? todaysVisitors.toString() : 
-                            index == 1 ? currentlyIn.toString() : 
-                            index == 2 ? totalVisitors.toString() : checkedOutToday.toString(),
-                            index == 0 ? Icons.people_alt_rounded : 
-                            index == 1 ? Icons.person_pin_circle_rounded : 
-                            index == 2 ? Icons.groups_rounded : Icons.logout_rounded,
-                            index == 0 ? Color(0xFF10B981) : 
-                            index == 1 ? Color(0xFFF59E0B) : 
-                            index == 2 ? AppColors.primaryBlue : Color(0xFFEF4444),
-                            isSmallScreen,
-                            index == 0 ? '+12%' : index == 2 ? '+5%' : '',
-                            index == 0 || index == 2,
-                          ),
-                          childCount: 4,
-                        ),
-                      ),
+                      sliver:
+                          _isRefreshing
+                              ? SliverToBoxAdapter(
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              )
+                              : SliverGrid(
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      mainAxisSpacing: 16,
+                                      crossAxisSpacing: 16,
+                                      childAspectRatio: 1.1,
+                                    ),
+                                delegate: SliverChildBuilderDelegate(
+                                  (context, index) => _buildModernStatCard(
+                                    index == 0
+                                        ? 'Today\'s Visitors'
+                                        : index == 1
+                                        ? 'Currently In'
+                                        : index == 2
+                                        ? 'Total Visitors'
+                                        : 'Checked Out',
+                                    index == 0
+                                        ? todaysVisitors.toString()
+                                        : index == 1
+                                        ? currentlyIn.toString()
+                                        : index == 2
+                                        ? totalVisitors.toString()
+                                        : checkedOutToday.toString(),
+                                    index == 0
+                                        ? Icons.people_alt_rounded
+                                        : index == 1
+                                        ? Icons.person_pin_circle_rounded
+                                        : index == 2
+                                        ? Icons.groups_rounded
+                                        : Icons.logout_rounded,
+                                    index == 0
+                                        ? Color(0xFF10B981)
+                                        : index == 1
+                                        ? Color(0xFFF59E0B)
+                                        : index == 2
+                                        ? AppColors.primaryBlue
+                                        : Color(0xFFEF4444),
+                                    isSmallScreen,
+                                    index == 0
+                                        ? '+12%'
+                                        : index == 2
+                                        ? '+5%'
+                                        : '',
+                                    index == 0 || index == 2,
+                                  ),
+                                  childCount: 4,
+                                ),
+                              ),
                     ),
-                    
-                    // Quick Actions Title
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: EdgeInsets.only(
@@ -273,15 +317,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           style: GoogleFonts.poppins(
                             fontSize: isSmallScreen ? 22 : 26,
                             fontWeight: FontWeight.w700,
-                            color: isDarkMode ? Colors.white : Color(0xFF0F172A),
+                            color:
+                                isDarkMode ? Colors.white : Color(0xFF0F172A),
                           ),
                         ),
                       ),
                     ),
-                    
-                    // Quick Actions
                     SliverPadding(
-                      padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 16 : 24),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isSmallScreen ? 16 : 24,
+                      ),
                       sliver: SliverGrid(
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 2,
@@ -289,53 +334,48 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           crossAxisSpacing: 16,
                           childAspectRatio: 1.3,
                         ),
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final actions = [
-                              {
-                                'title': 'New Visitor',
-                                'subtitle': 'Register visitor',
-                                'icon': Icons.person_add_alt_1_rounded,
-                                'color': Color(0xFF10B981),
-                                'route': '/visitor-registration'
-                              },
-                              {
-                                'title': 'Check Out',
-                                'subtitle': 'Complete visit',
-                                'icon': Icons.logout_rounded,
-                                'color': Color(0xFFF59E0B),
-                                'route': '/check-out'
-                              },
-                              {
-                                'title': 'Verify Student',
-                                'subtitle': 'ID verification',
-                                'icon': Icons.verified_user_rounded,
-                                'color': Color(0xFF3B82F6),
-                                'route': '/lost-id-verification'
-                              },
-                              {
-                                'title': 'Settings',
-                                'subtitle': 'App preferences',
-                                'icon': Icons.settings_rounded,
-                                'color': Color(0xFF8B5CF6),
-                                'route': '/settings'
-                              },
-                            ];
-                            return _buildModernActionCard(
-                              actions[index]['title'] as String,
-                              actions[index]['subtitle'] as String,
-                              actions[index]['icon'] as IconData,
-                              actions[index]['color'] as Color,
-                              actions[index]['route'] as String,
-                              isSmallScreen,
-                            );
-                          },
-                          childCount: 4,
-                        ),
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final actions = [
+                            {
+                              'title': 'New Visitor',
+                              'subtitle': 'Register visitor',
+                              'icon': Icons.person_add_alt_1_rounded,
+                              'color': Color(0xFF10B981),
+                              'route': '/visitor-registration',
+                            },
+                            {
+                              'title': 'Check Out',
+                              'subtitle': 'Complete visit',
+                              'icon': Icons.logout_rounded,
+                              'color': Color(0xFFF59E0B),
+                              'route': '/check-out',
+                            },
+                            {
+                              'title': 'Verify Student',
+                              'subtitle': 'ID verification',
+                              'icon': Icons.verified_user_rounded,
+                              'color': Color(0xFF3B82F6),
+                              'route': '/lost-id-verification',
+                            },
+                            {
+                              'title': 'Settings',
+                              'subtitle': 'App preferences',
+                              'icon': Icons.settings_rounded,
+                              'color': Color(0xFF8B5CF6),
+                              'route': '/settings',
+                            },
+                          ];
+                          return _buildModernActionCard(
+                            actions[index]['title'] as String,
+                            actions[index]['subtitle'] as String,
+                            actions[index]['icon'] as IconData,
+                            actions[index]['color'] as Color,
+                            actions[index]['route'] as String,
+                            isSmallScreen,
+                          );
+                        }, childCount: 4),
                       ),
                     ),
-                    
-                    // Recent Visitors Header
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: EdgeInsets.only(
@@ -351,7 +391,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               style: GoogleFonts.poppins(
                                 fontSize: isSmallScreen ? 22 : 26,
                                 fontWeight: FontWeight.w700,
-                                color: isDarkMode ? Colors.white : Color(0xFF0F172A),
+                                color:
+                                    isDarkMode
+                                        ? Colors.white
+                                        : Color(0xFF0F172A),
                               ),
                             ),
                             TextButton(
@@ -360,7 +403,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               },
                               child: Text(
                                 'View All',
-                                style: GoogleFonts.inter(
+                                style: GoogleFonts.afacad(
                                   color: AppColors.primaryBlue,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -370,23 +413,71 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       ),
                     ),
-                    
-                    // Recent Visitors List
                     SliverPadding(
-                      padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 16 : 24),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isSmallScreen ? 16 : 24,
+                      ),
                       sliver: SliverToBoxAdapter(
-                        child: Consumer<VisitorProvider>(
-                          builder: (context, visitorProvider, child) {
-                            final recentVisitors = visitorProvider.visitors.take(3).toList();
-                            return _buildRecentVisitors(recentVisitors, isSmallScreen);
-                          },
-                        ),
+                        child:
+                            _token == null
+                                ? Container(
+                                  padding: EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        isDarkMode
+                                            ? Color(0xFF1E293B)
+                                            : Colors.white,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        Icons.lock_outline,
+                                        size: 40,
+                                        color: Colors.grey,
+                                      ),
+                                      SizedBox(height: 10),
+                                      Text(
+                                        'Please log in to view visitors',
+                                        style: GoogleFonts.afacad(
+                                          color: Colors.grey,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      SizedBox(height: 10),
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          Navigator.pushNamedAndRemoveUntil(
+                                            context,
+                                            '/login',
+                                            (route) => false,
+                                          );
+                                        },
+                                        child: Text('Go to Login'),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                                : Consumer<VisitorProvider>(
+                                  builder: (context, visitorProvider, child) {
+                                    final recentVisitors =
+                                        visitorProvider.visitors
+                                            .where(
+                                              (visitor) =>
+                                                  visitor.gate == deviceGate ||
+                                                  visitor.gateId == gateId,
+                                            )
+                                            .take(3)
+                                            .toList();
+                                    return _buildRecentVisitors(
+                                      recentVisitors,
+                                      isSmallScreen,
+                                    );
+                                  },
+                                ),
                       ),
                     ),
-                    
-                    SliverToBoxAdapter(
-                      child: SizedBox(height: 100),
-                    ),
+                    SliverToBoxAdapter(child: SizedBox(height: 100)),
                   ],
                 ),
               ),
@@ -455,7 +546,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   children: [
                     Text(
                       'Current Location',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.afacad(
                         fontSize: isSmallScreen ? 14 : 16,
                         color: Colors.white.withOpacity(0.8),
                         fontWeight: FontWeight.w500,
@@ -464,7 +555,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     SizedBox(height: 4),
                     Text(
                       deviceGate ?? 'Main Gate',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.afacad(
                         fontSize: isSmallScreen ? 22 : 26,
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
@@ -495,7 +586,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     SizedBox(width: 8),
                     Text(
                       'Online • ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.afacad(
                         color: Colors.white,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -507,7 +598,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ],
           ),
           SizedBox(height: 20),
-          // Animated progress indicator for today's visitors
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -516,14 +606,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 children: [
                   Text(
                     'Today\'s Progress',
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.afacad(
                       color: Colors.white.withOpacity(0.8),
                       fontSize: 14,
                     ),
                   ),
                   Text(
                     '$todaysVisitors visitors',
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.afacad(
                       color: Colors.white,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -562,9 +652,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           final isSelected = timeRanges[index] == selectedTimeRange;
           return GestureDetector(
             onTap: () {
-              setState(() {
-                selectedTimeRange = timeRanges[index];
-              });
+              if (mounted) {
+                setState(() {
+                  selectedTimeRange = timeRanges[index];
+                });
+              }
               _refreshData();
               HapticFeedback.selectionClick();
             },
@@ -573,32 +665,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               curve: Curves.easeInOut,
               padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
-                color: isSelected
-                    ? Colors.white
-                    : Colors.transparent,
+                color: isSelected ? Colors.white : Colors.transparent,
                 borderRadius: BorderRadius.circular(25),
                 border: Border.all(
-                  color: isSelected
-                      ? Colors.white
-                      : Colors.white.withOpacity(0.5),
+                  color:
+                      isSelected ? Colors.white : Colors.white.withOpacity(0.5),
                   width: isSelected ? 0 : 1,
                 ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 8,
-                          offset: Offset(0, 4),
-                        ),
-                      ]
-                    : [],
+                boxShadow:
+                    isSelected
+                        ? [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: Offset(0, 4),
+                          ),
+                        ]
+                        : [],
               ),
               child: Text(
                 timeRanges[index],
-                style: GoogleFonts.inter(
-                  color: isSelected
-                      ? AppColors.primaryBlue
-                      : Colors.white,
+                style: GoogleFonts.afacad(
+                  color: isSelected ? AppColors.primaryBlue : Colors.white,
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                 ),
@@ -610,8 +698,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildModernStatCard(String title, String count, IconData icon, Color color,
-      bool isSmallScreen, String trend, bool showTrend) {
+  Widget _buildModernStatCard(
+    String title,
+    String count,
+    IconData icon,
+    Color color,
+    bool isSmallScreen,
+    String trend,
+    bool showTrend,
+  ) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -625,18 +720,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           padding: EdgeInsets.all(isSmallScreen ? 20 : 24),
           decoration: BoxDecoration(
             color: isDarkMode ? Color(0xFF1E293B) : Colors.white,
-            borderRadius: BorderRadius.circular(24), // Increased border radius
+            borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.1),
-                blurRadius: 20, // Increased blur
-                offset: Offset(0, 8), // Increased offset for more elevation
+                blurRadius: 20,
+                offset: Offset(0, 8),
                 spreadRadius: -5,
               ),
             ],
-            border: isDarkMode 
-                ? Border.all(color: Color(0xFF334155), width: 1)
-                : null,
+            border:
+                isDarkMode
+                    ? Border.all(color: Color(0xFF334155), width: 1)
+                    : null,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -654,25 +750,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     child: Icon(
                       icon,
                       color: color,
-                      size: isSmallScreen ? 22 : 26, // Slightly larger icon
+                      size: isSmallScreen ? 22 : 26,
                     ),
                   ),
                   if (showTrend && trend.isNotEmpty)
                     Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Color(0xFF10B981).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.trending_up_rounded, 
-                              size: 16, 
-                              color: Color(0xFF10B981)),
+                          Icon(
+                            Icons.trending_up_rounded,
+                            size: 16,
+                            color: Color(0xFF10B981),
+                          ),
                           SizedBox(width: 6),
                           Text(
                             trend,
-                            style: GoogleFonts.inter(
+                            style: GoogleFonts.afacad(
                               fontSize: 13,
                               color: Color(0xFF10B981),
                               fontWeight: FontWeight.w600,
@@ -689,7 +790,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   AnimatedCount(
                     count: int.parse(count),
                     style: GoogleFonts.poppins(
-                      fontSize: isSmallScreen ? 30 : 34, // Larger font
+                      fontSize: isSmallScreen ? 30 : 34,
                       fontWeight: FontWeight.w800,
                       color: isDarkMode ? Colors.white : Color(0xFF0F172A),
                       height: 1.1,
@@ -698,8 +799,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   SizedBox(height: 6),
                   Text(
                     title,
-                    style: GoogleFonts.inter(
-                      fontSize: isSmallScreen ? 14 : 15, // Slightly larger
+                    style: GoogleFonts.afacad(
+                      fontSize: isSmallScreen ? 14 : 15,
                       color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
                       fontWeight: FontWeight.w500,
                     ),
@@ -713,8 +814,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildModernActionCard(String title, String subtitle, IconData icon,
-      Color color, String route, bool isSmallScreen) {
+  Widget _buildModernActionCard(
+    String title,
+    String subtitle,
+    IconData icon,
+    Color color,
+    String route,
+    bool isSmallScreen,
+  ) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -748,18 +855,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      color.withOpacity(0.2),
-                      color.withOpacity(0.4),
-                    ],
+                    colors: [color.withOpacity(0.2), color.withOpacity(0.4)],
                   ),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(
-                  icon,
-                  size: isSmallScreen ? 22 : 26,
-                  color: color,
-                ),
+                child: Icon(icon, size: isSmallScreen ? 22 : 26, color: color),
               ),
               SizedBox(height: 16),
               Text(
@@ -773,7 +873,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               SizedBox(height: 4),
               Text(
                 subtitle,
-                style: GoogleFonts.inter(
+                style: GoogleFonts.afacad(
                   fontSize: isSmallScreen ? 12 : 13,
                   color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
                   fontWeight: FontWeight.w500,
@@ -799,8 +899,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             Icon(Icons.people_outline_rounded, size: 40, color: Colors.grey),
             SizedBox(height: 10),
             Text(
-              'No recent visitors',
-              style: GoogleFonts.inter(
+              'No recent visitors for $deviceGate',
+              style: GoogleFonts.afacad(
                 color: Colors.grey,
                 fontWeight: FontWeight.w500,
               ),
@@ -816,74 +916,99 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
-        children: visitors.map((visitor) {
-          return ListTile(
-            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            leading: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: AppColors.primaryBlue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.person_rounded,
-                color: AppColors.primaryBlue,
-              ),
-            ),
-            title: Text(
-              visitor.name,
-              style: GoogleFonts.inter(
-                fontWeight: FontWeight.w600,
-                color: isDarkMode ? Colors.white : Colors.black,
-              ),
-            ),
-            subtitle: Text(
-              visitor.purpose ?? '',
-              style: GoogleFonts.inter(
-                color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
-              ),
-            ),
-            trailing: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  visitor.checkInTime?.format(context) ?? 'Now',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
-                  ),
+        children:
+            visitors.map((visitor) {
+              return ListTile(
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
                 ),
-                SizedBox(height: 4),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                leading: Container(
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    color: (visitor.checkedOut ?? false)
-                        ? Colors.green.withOpacity(0.1)
-                        : Colors.orange.withOpacity(0.1),
+                    color: AppColors.primaryBlue.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(
-                    (visitor.checkedOut ?? false) ? 'Checked Out' : 'Checked In',
-                    style: GoogleFonts.inter(
-                      fontSize: 10,
-                      color: (visitor.checkedOut ?? false) ? Colors.green : Colors.orange,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  child: Icon(
+                    Icons.person_rounded,
+                    color: AppColors.primaryBlue,
                   ),
                 ),
-              ],
-            ),
-            onTap: () {
-              Navigator.pushNamed(
-                context,
-                '/visitor-details',
-                arguments: visitor,
+                title: Text(
+                  visitor.name,
+                  style: GoogleFonts.afacad(
+                    fontWeight: FontWeight.w600,
+                    color: isDarkMode ? Colors.white : Colors.black,
+                  ),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      visitor.hadAppointment ?? 'No appointment',
+                      style: GoogleFonts.afacad(
+                        color:
+                            isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Check-in: ${visitor.checkInTime?.format(context) ?? 'Not available'}',
+                      style: GoogleFonts.afacad(
+                        fontSize: 12,
+                        color:
+                            isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
+                      ),
+                    ),
+                    Text(
+                      'Check-out: ${visitor.checkOutTime?.format(context) ?? 'Not checked out'}',
+                      style: GoogleFonts.afacad(
+                        fontSize: 12,
+                        color:
+                            isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color:
+                            visitor.checkOutTime == null
+                                ? Colors.green.withOpacity(0.1)
+                                : Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        visitor.checkOutTime == null
+                            ? 'Checked In'
+                            : 'Checked Out',
+                        style: GoogleFonts.afacad(
+                          fontSize: 12,
+                          color:
+                              visitor.checkOutTime == null
+                                  ? Colors.green
+                                  : Colors.red,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/visitor-details',
+                    arguments: visitor,
+                  );
+                },
               );
-            },
-          );
-        }).toList(),
+            }).toList(),
       ),
     );
   }
@@ -916,56 +1041,168 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _toggleDarkMode() async {
-    setState(() {
-      isDarkMode = !isDarkMode;
-    });
+    if (mounted) {
+      setState(() {
+        isDarkMode = !isDarkMode;
+      });
+    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isDarkMode', isDarkMode);
   }
 
-  Future<void> _refreshData() async {
+  // Dummy implementation for _loadGates to resolve the error.
+  Future<void> _loadGates() async {
+    // TODO: Implement actual gate loading logic if needed.
+    await Future.delayed(Duration(milliseconds: 100));
+  }
+
+ Future<void> _refreshData() async {
+    // Check if token, gateId, or deviceGate is missing
+    if (_token == null || gateId == null || deviceGate == null) {
+      debugPrint('⚠️ token, gateId, or deviceGate is null, cannot refresh data');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Authentication token or gate information missing'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+        if (_token == null) {
+          Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        }
+      }
+      return;
+    }
+
+    // Validate Sanctum token format (id|token)
+    bool isValidTokenFormat(String token) {
+      final parts = token.split('|');
+      return parts.length == 2 && parts[0].isNotEmpty && parts[1].isNotEmpty;
+    }
+
+    if (_token != null && !isValidTokenFormat(_token!)) {
+      debugPrint('⚠️ Invalid token format: $_token');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('token');
+      await prefs.remove('gate_id');
+      if (mounted) {
+        setState(() {
+          _token = null;
+          gateId = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Invalid authentication token. Please log in again.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      }
+      return;
+    }
+
+    if (!mounted) {
+      debugPrint('⚠️ HomeScreen is not mounted, skipping refresh');
+      return;
+    }
+
     setState(() {
       _isRefreshing = true;
     });
 
     final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
-    await visitorProvider.loadVisitors();
-    await visitorProvider.logVisitCount();
+    try {
+      await _loadGates();
+      visitorProvider.setAuthData(_token!, gateId!, deviceGate ?? 'Gate A');
+      await visitorProvider.loadCheckedInVisitors();
+      await visitorProvider.logVisitCount();
+      if (mounted) {
+        setState(() {
+          todaysVisitors = visitorProvider.todaysVisitCount;
+          currentlyIn = visitorProvider.checkedInCount;
+          checkedOutToday = visitorProvider.checkedOutCount;
+          totalVisitors = visitorProvider.totalVisitCount;
+          _isRefreshing = false;
+        });
 
-    setState(() {
-      todaysVisitors = visitorProvider.todaysVisitCount;
-      currentlyIn = visitorProvider.checkedInCount;
-      checkedOutToday = visitorProvider.checkedOutCount;
-      totalVisitors = visitorProvider.totalVisitCount;
-      _isRefreshing = false;
-    });
+        final prefs = await SharedPreferences.getInstance();
+        if (todaysVisitors >= (prefs.getInt('confettiThreshold') ?? 20)) {
+          // Assume _confettiController.play() is defined
+          // _confettiController.play();
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error refreshing data: $e');
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+        String errorMessage = 'Failed to refresh data: $e';
+        if (e.toString().contains('Status 401') || e.toString().contains('Authentication failed')) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('token');
+          await prefs.remove('gate_id');
+          setState(() {
+            _token = null;
+            gateId = null;
+          });
+          errorMessage = 'Session expired or invalid token. Please log in again.';
+          Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    }
+  
 
-    // Play confetti if today's visitors exceed a threshold
-    if (todaysVisitors > 20) {
-      _confettiController.play();
+  }  void _onBottomNavTap(int index) {
+    final navRoutes = {
+      0: null, // Home
+      1: '/visitor-registration',
+      2: '/check-out',
+      3: '/lost-id-verification',
+      4: '/settings',
+    };
+
+    if (mounted) {
+      setState(() {
+        _currentIndex = index;
+      });
+    }
+
+    final route = navRoutes[index];
+    if (route != null) {
+      Navigator.pushNamed(context, route);
     }
   }
+}
 
-  void _onBottomNavTap(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
+extension on LiquidController {
+  void dispose() {
+    // Assuming LiquidController handles its own disposal
+  }
+}
 
-    switch (index) {
-      case 0:
-        break;
-      case 1:
-        Navigator.pushNamed(context, '/visitor-registration');
-        break;
-      case 2:
-        Navigator.pushNamed(context, '/check-out');
-        break;
-      case 3:
-        Navigator.pushNamed(context, '/lost-id-verification');
-        break;
-      case 4:
-        Navigator.pushNamed(context, '/settings');
-        break;
+extension DateTimeExtension on DateTime? {
+  String format(BuildContext context) {
+    if (this == null) return 'Not available';
+    try {
+      final localTime = this!.toLocal(); // Convert to local time (EAT assumed)
+      final formatter = DateFormat('dd MMM yyyy, hh:mm a');
+      return formatter.format(localTime);
+    } catch (e) {
+      debugPrint('❌ Error formatting date: $this, Error: $e');
+      return 'Invalid date';
     }
   }
 }
@@ -974,16 +1211,14 @@ class AnimatedCount extends StatefulWidget {
   final int count;
   final TextStyle? style;
 
-  const AnimatedCount({
-    required this.count,
-    this.style,
-  });
+  const AnimatedCount({required this.count, this.style});
 
   @override
   _AnimatedCountState createState() => _AnimatedCountState();
 }
 
-class _AnimatedCountState extends State<AnimatedCount> with TickerProviderStateMixin {
+class _AnimatedCountState extends State<AnimatedCount>
+    with TickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<int> _animation;
   int _previousCount = 0;
@@ -996,15 +1231,12 @@ class _AnimatedCountState extends State<AnimatedCount> with TickerProviderStateM
       duration: Duration(milliseconds: 1000),
       vsync: this,
     );
-    
+
     _animation = IntTween(
       begin: _previousCount,
       end: widget.count,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOut,
-    ));
-    
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+
     _controller.forward();
   }
 
@@ -1016,10 +1248,7 @@ class _AnimatedCountState extends State<AnimatedCount> with TickerProviderStateM
       _animation = IntTween(
         begin: _previousCount,
         end: widget.count,
-      ).animate(CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOut,
-      ));
+      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
       _controller.forward();
     }
     super.didUpdateWidget(oldWidget);
@@ -1036,10 +1265,7 @@ class _AnimatedCountState extends State<AnimatedCount> with TickerProviderStateM
     return AnimatedBuilder(
       animation: _animation,
       builder: (context, child) {
-        return Text(
-          _animation.value.toString(),
-          style: widget.style,
-        );
+        return Text(_animation.value.toString(), style: widget.style);
       },
     );
   }

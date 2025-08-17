@@ -1,18 +1,26 @@
+
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:google_ml_kit/google_ml_kit.dart';
+import 'package:im_stepper/stepper.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../components/custom_app_bar.dart';
 import '../models/visitor.dart';
-import '../models/host.dart';
 import '../providers/visitor_provider.dart';
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 import 'package:flutter/scheduler.dart';
 
 class VisitorRegistrationScreen extends StatefulWidget {
+  const VisitorRegistrationScreen({super.key});
+
   @override
   _VisitorRegistrationScreenState createState() =>
       _VisitorRegistrationScreenState();
@@ -41,20 +49,26 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
   final _vehicleTypeController = TextEditingController();
   final _vehicleRegController = TextEditingController();
 
-  Host? _selectedHost;
+  List<Map<String, dynamic>> _availableTags = [];
+  String? _authToken;
+  String? gateId;
+  String? deviceGate;
+  bool _isRefreshing = false;
+  String? _token;
   String _selectedIdType = 'national_id';
   String _visitType = 'staff';
   String _phoneCountryCode = '+254';
   int _currentStep = 0;
   bool _isLoading = false;
   bool _isMinor = false;
-  bool _showManualHostEntry = true;
+  bool _isScanning = false;
   String? _selectedDestinationId;
   String? _selectedVisitorTagId;
   String? _selectedGate;
   String? _idValidationError;
+  String? _selectedFloorId;
+  String? _selectedGender;
   Timer? _debounceTimer;
-  bool _isScanning = false;
 
   final List<Map<String, String>> _idTypeOptions = [
     {'value': 'national_id', 'label': 'National ID'},
@@ -77,6 +91,12 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
     {'value': 'Other', 'label': 'Other'},
   ];
 
+  final List<Map<String, String>> _genderOptions = [
+    {'value': 'Male', 'label': 'Male'},
+    {'value': 'Female', 'label': 'Female'},
+    {'value': 'Other', 'label': 'Other'},
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -86,91 +106,853 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _idNumberController.removeListener(_debouncedCheckExistingVisitor);
+    _idNumberController.dispose();
+    _nameController.dispose();
+    _phoneController.dispose();
+    _guardianPhoneController.dispose();
+    _countryController.dispose();
+    _hostNameController.dispose();
+    _hostPhoneController.dispose();
+    _hostEmailController.dispose();
+    _hostDepartmentController.dispose();
+    _hostPositionController.dispose();
+    _officeNameController.dispose();
+    _officePhoneController.dispose();
+    _officeEmailController.dispose();
+    _officeDepartmentController.dispose();
+    _officeContactPersonController.dispose();
+    _appointmentController.dispose();
+    _vehicleTypeController.dispose();
+    _vehicleRegController.dispose();
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
+
   void _debouncedCheckExistingVisitor() {
-    if (_debounceTimer?.isActive ?? false) _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      _checkExistingVisitor();
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 1000), () {
+      if (mounted) {
+        _checkExistingVisitor();
+      }
     });
   }
 
   Future<void> _loadInitialData() async {
-    // TODO: Implement any initial data loading logic here if needed.
-    // For example, you might want to fetch destinations, visitor tags, etc.
-    // If not needed, you can leave this method empty.
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      await _loadTokenFromPreferences();
+      await _fetchAvailableTags();
+      final visitorProvider = Provider.of<VisitorProvider>(
+        context,
+        listen: false,
+      );
+      await visitorProvider.loadDestinations();
+      await visitorProvider.loadVisitorTags();
+      await visitorProvider.loadCheckedInVisitors();
+    } catch (e) {
+      _showErrorDialog('Failed to load initial data: $e');
+      debugPrint('❌ Error loading initial data: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
-  // Checks if a visitor with the entered ID already exists and sets validation error if needed.
-  void _checkExistingVisitor() {
-    final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
-    final idNumber = _idNumberController.text.trim();
-    if (idNumber.isEmpty) {
+  Future<void> _loadTokenFromPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
       setState(() {
-        _idValidationError = null;
+        _token = prefs.getString('token');
+        gateId = prefs.getString('gate_id');
+        deviceGate = prefs.getString('device_gate') ?? 'Gate A';
+        _authToken = _token;
       });
+      debugPrint(
+        _token != null
+            ? '✅ Loaded auth token: ${_token!.substring(0, 10)}...'
+            : '⚠️ No auth token found',
+      );
+      debugPrint(
+        gateId != null ? '✅ Loaded gateId: $gateId' : '⚠️ No gateId found',
+      );
+      debugPrint('📴 Loaded cached gate: $deviceGate');
+      if (_token != null && gateId != null && deviceGate != null) {
+        final visitorProvider = Provider.of<VisitorProvider>(
+          context,
+          listen: false,
+        );
+        visitorProvider.setAuthData(_token!, gateId!, deviceGate!);
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading token from SharedPreferences: $e');
+      setState(() {
+        _token = null;
+        _authToken = null;
+        gateId = null;
+        deviceGate = null;
+      });
+    }
+  }
+
+  Future<void> _checkExistingVisitor() async {
+    if (!mounted) return;
+    final visitorProvider = Provider.of<VisitorProvider>(
+      context,
+      listen: false,
+    );
+    final idNumber = _idNumberController.text.trim();
+    debugPrint('Checking visitor ID: $idNumber, Type: $_selectedIdType');
+    if (idNumber.isEmpty) {
+      if (mounted) {
+        setState(() => _idValidationError = null);
+      }
+      debugPrint('ID is empty, skipping check');
       return;
     }
     final error = visitorProvider.validateIdNumber(idNumber, _selectedIdType);
-    setState(() {
-      _idValidationError = error;
-    });
-  }
+    if (error != null) {
+      if (mounted) {
+        setState(() => _idValidationError = error);
+      }
+      debugPrint('Validation error: $error');
+      return;
+    }
 
-  // ... [Keep all your existing methods like _refreshVisitorTags, _loadInitialData, etc.] ...
-
-  Future<void> _scanID() async {
     try {
-      setState(() {
-        _isScanning = true;
-      });
-      
-      // Simulate scanning - replace with actual barcode scanning logic
-      await Future.delayed(Duration(seconds: 1));
-      
-      // For demo purposes, we'll just generate a random ID number
-      final randomId = _selectedIdType == 'national_id' 
-          ? '3${DateTime.now().millisecondsSinceEpoch.toString().substring(0, 7)}'
-          : 'A${DateTime.now().millisecondsSinceEpoch.toString().substring(0, 7)}';
-      
-      setState(() {
-        _idNumberController.text = randomId;
-        _isScanning = false;
-      });
-      
-      // Auto-validate after scan
-      _checkExistingVisitor();
+      setState(() => _isLoading = true);
+      final response = await visitorProvider.checkExistingVisitor(
+        idNumber,
+        _selectedIdType,
+      );
+      debugPrint('Check visitor response: $response');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          if (response != null &&
+              (response['exists'] == true || response['exists'] == 'true') &&
+              response['visitor'] != null) {
+            final visitorData = response['visitor'] as Map<String, dynamic>;
+            final visitorStatus =
+                response['visitorStatus']?.toString() ?? 'unknown';
+            final isCheckedIn = visitorStatus == 'active';
+            debugPrint(
+              'Visitor status: isCheckedIn=$isCheckedIn, visitorStatus=$visitorStatus, alreadyCheckedIn=${response['alreadyCheckedIn']}, status=${visitorData['status']}',
+            );
+            if (isCheckedIn) {
+              _idValidationError = 'Visitor is currently active at this gate';
+              _showExistingVisitorDialog(
+                visitorData,
+                visitorStatus: visitorStatus,
+              );
+            } else if (visitorStatus == 'completed') {
+              _idValidationError =
+                  'Visitor with ID $idNumber has completed their visit';
+              _showExistingVisitorDialog(
+                visitorData,
+                visitorStatus: visitorStatus,
+              );
+            } else {
+              _idValidationError = 'Visitor with ID $idNumber already exists';
+              _showExistingVisitorDialog(
+                visitorData,
+                visitorStatus: visitorStatus,
+              );
+            }
+          } else {
+            _idValidationError = null;
+            debugPrint('No existing visitor found for ID $idNumber');
+          }
+        });
+      }
     } catch (e) {
-      setState(() {
-        _isScanning = false;
-      });
-      _showErrorDialog('Scanning failed: $e');
+      debugPrint('Error checking existing visitor: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          if (e.toString().contains('404')) {
+            _idValidationError = null;
+            debugPrint('No visitor found for ID $idNumber');
+          } else if (e.toString().contains('401')) {
+            _idValidationError = 'Session expired. Please log in again.';
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/login',
+              (route) => false,
+            );
+          } else if (e.toString().contains('422')) {
+            Future.delayed(Duration(seconds: 2), () {
+              if (mounted) _checkExistingVisitor();
+            });
+            _idValidationError = 'Validation error, retrying...';
+          } else {
+            _idValidationError = 'Error checking ID: $e';
+          }
+        });
+      }
     }
   }
 
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Error', style: GoogleFonts.lexend(fontWeight: FontWeight.bold)),
-        content: Text(message, style: GoogleFonts.lexend()),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('OK', style: GoogleFonts.lexend()),
-          ),
-        ],
-      ),
+  Future<void> _fetchAvailableTags() async {
+    final visitorProvider = Provider.of<VisitorProvider>(
+      context,
+      listen: false,
     );
+    try {
+      final token = _authToken ?? visitorProvider.token;
+      if (token == null || gateId == null) {
+        debugPrint('⚠️ Cannot fetch tags: No token or gate ID');
+        return;
+      }
+      debugPrint('📥 Fetch tags with token: ${token.substring(0, 10)}...');
+      final response = await http.get(
+        Uri.parse(
+          '${AppStrings.apiBaseUrl}/api/visitor-tags?unassigned=true&gate_id=$gateId',
+        ),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      );
+      debugPrint(
+        '📥 Fetch tags response: ${response.statusCode} - ${response.body}',
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _availableTags =
+                List<Map<String, dynamic>>.from(
+                  data['tags'],
+                ).where((tag) => tag['is_assigned'] == false).map((tag) {
+                  if (tag['tag_number'] == null ||
+                      tag['tag_number'].toString().isEmpty) {
+                    tag['tag_number'] = 'Tag ${tag['id'] ?? 'Unknown'}';
+                    debugPrint(
+                      '⚠️ Assigned fallback tag_number: ${tag['tag_number']} for tag ID: ${tag['id']}',
+                    );
+                  }
+                  return tag;
+                }).toList();
+            debugPrint('Filtered Available Tags: $_availableTags');
+            _selectedVisitorTagId =
+                _availableTags.isNotEmpty
+                    ? _availableTags.first['id']?.toString()
+                    : null;
+            debugPrint('Selected Visitor Tag ID: $_selectedVisitorTagId');
+          });
+        }
+      } else if (response.statusCode == 401) {
+        _showErrorDialog('Session expired. Please log in again.');
+        if (mounted) {
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/login',
+            (route) => false,
+          );
+        }
+      } else {
+        _showErrorDialog('Failed to load tags: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching tags: $e');
+      Future.delayed(Duration(seconds: 2), () {
+        if (mounted) _fetchAvailableTags();
+      });
+      _showErrorDialog('Error fetching tags, retrying...');
+    }
   }
 
-  InputDecoration _buildInputDecoration(String label, IconData icon, {bool isRequired = true}) {
+  Future<void> _refreshData() async {
+    if (_token == null || gateId == null) {
+      debugPrint('⚠️ token or gateId is null, cannot refresh data');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Authentication token or gate information missing'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+        if (_token == null) {
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/login',
+            (route) => false,
+          );
+        }
+      }
+      return;
+    }
+
+    bool isValidTokenFormat(String token) {
+      final parts = token.split('|');
+      return parts.length == 2 && parts[0].isNotEmpty && parts[1].isNotEmpty;
+    }
+
+    if (_token != null && !isValidTokenFormat(_token!)) {
+      debugPrint('⚠️ Invalid token format: $_token');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('token');
+      await prefs.remove('gate_id');
+      if (mounted) {
+        setState(() {
+          _token = null;
+          _authToken = null;
+          gateId = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Invalid authentication token. Please log in again.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      }
+      return;
+    }
+
+    if (!mounted) {
+      debugPrint(
+        '⚠️ VisitorRegistrationScreen is not mounted, skipping refresh',
+      );
+      return;
+    }
+
+    setState(() => _isRefreshing = true);
+    final visitorProvider = Provider.of<VisitorProvider>(
+      context,
+      listen: false,
+    );
+    try {
+      if (gateId == null || deviceGate == null) {
+        final prefs = await SharedPreferences.getInstance();
+        gateId = prefs.getString('gate_id');
+        deviceGate = prefs.getString('device_gate') ?? 'Gate A';
+        if (_token != null && gateId != null && deviceGate != null) {
+          visitorProvider.setAuthData(_token!, gateId!, deviceGate!);
+        }
+      }
+
+      await Future.wait([
+        _fetchAvailableTags(),
+        visitorProvider.loadDestinations(),
+        visitorProvider.loadVisitorTags(),
+        visitorProvider.loadCheckedInVisitors(),
+        visitorProvider.logVisitCount(),
+      ]);
+
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+        _showErrorDialog('Failed to refresh data: $e');
+        debugPrint('❌ Error refreshing data: $e');
+      }
+    }
+  }
+
+  Future<void> _scanID() async {
+    try {
+      setState(() => _isScanning = true);
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.camera);
+
+      if (image == null) {
+        if (mounted) {
+          setState(() => _isScanning = false);
+          _showErrorDialog('No image captured.');
+        }
+        return;
+      }
+
+      final inputImage = InputImage.fromFilePath(image.path);
+      final textRecognizer = TextRecognizer(
+        script: TextRecognitionScript.latin,
+      );
+      final RecognizedText recognizedText = await textRecognizer.processImage(
+        inputImage,
+      );
+      String extractedText = recognizedText.text;
+      await textRecognizer.close();
+
+      debugPrint('📷 Extracted text: $extractedText');
+
+      String? idNumber;
+      String? name;
+      String? gender;
+      String? country;
+
+      const countryNames = [
+        'Kenya',
+        'United States',
+        'United Kingdom',
+        'Canada',
+        'Australia',
+        'India',
+        'Germany',
+        'France',
+        'Brazil',
+        'China',
+        'Japan',
+        'South Africa',
+        'Nigeria',
+        'Ghana',
+        'Ethiopia',
+      ];
+
+      Map<String, Map<String, String>> idTypePatterns = {
+        'national_id': {
+          'label': r'^(ID Number|National ID|Identity Number|1D Number)\b',
+          'value': r'^\d{7,9}$',
+        },
+        'passport_number': {
+          'label': r'^(Passport Number|Passport No\.?|Passport)\b',
+          'value': r'^[A-Za-z0-9]{6,12}$',
+        },
+        'driving_licence': {
+          'label':
+              r'^(DL Number|Driving Licence No\.?|Driving License Number|Licence No)\b',
+          'value': r'^[A-Za-z0-9-]{6,}$',
+        },
+        'birth_certificate_number': {
+          'label':
+              r'^(Birth Certificate Number|Certificate No\.?|Birth Cert No)\b',
+          'value': r'^[A-Za-z0-9-]{6,}$',
+        },
+      };
+
+      final idPatterns =
+          idTypePatterns[_selectedIdType] ?? idTypePatterns['national_id']!;
+      final lines =
+          extractedText
+              .split('\n')
+              .map((line) => line.trim())
+              .where((line) => line.isNotEmpty)
+              .toList();
+
+      bool isNameField = false;
+      bool isSexField = false;
+      bool isIdField = false;
+
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].toLowerCase();
+
+        if (RegExp(idPatterns['label']!, caseSensitive: false).hasMatch(line)) {
+          isIdField = true;
+          if (i + 1 < lines.length) {
+            var potentialId = lines[i + 1].trim();
+            if (RegExp(idPatterns['value']!).hasMatch(potentialId)) {
+              idNumber = potentialId;
+            }
+          }
+          continue;
+        } else if (_selectedIdType != 'national_id' &&
+            idNumber == null &&
+            RegExp(idPatterns['value']!).hasMatch(line)) {
+          idNumber = line;
+        }
+
+        if (_selectedIdType == 'national_id' &&
+            RegExp(
+              r'^(id number|id no\.?)\b',
+              caseSensitive: false,
+            ).hasMatch(line)) {
+          isIdField = false;
+          continue;
+        }
+
+        if (RegExp(
+          r'^(name|names|full name|full names|surname|given name(s)?)\b',
+          caseSensitive: false,
+        ).hasMatch(line)) {
+          isNameField = true;
+          if (i + 1 < lines.length) {
+            name = lines[i + 1].trim();
+            if (!RegExp(r"^[A-Za-z\s-']+$").hasMatch(name) ||
+                name.split(' ').length < 2) {
+              name = null;
+            }
+          }
+          continue;
+        } else if (name == null &&
+            RegExp(r"^[A-Za-z\s-']+$").hasMatch(line) &&
+            line.split(' ').length >= 2) {
+          name = line;
+        }
+
+        if (RegExp(r'^(sex|gender)\b', caseSensitive: false).hasMatch(line)) {
+          isSexField = true;
+          if (i + 1 < lines.length) {
+            var sexValue = lines[i + 1].trim().toUpperCase();
+            if (sexValue.contains('M') || sexValue.contains('MALE')) {
+              gender = 'Male';
+            } else if (sexValue.contains('F') || sexValue.contains('FEMALE')) {
+              gender = 'Female';
+            } else {
+              gender = 'Other';
+            }
+          }
+          continue;
+        } else if (gender == null &&
+            RegExp(
+              r'^(MALE|FEMALE|M|F|OTHER)$',
+              caseSensitive: false,
+            ).hasMatch(line)) {
+          var sexValue = line.toUpperCase();
+          if (sexValue.contains('M') || sexValue.contains('MALE')) {
+            gender = 'Male';
+          } else if (sexValue.contains('F') || sexValue.contains('FEMALE')) {
+            gender = 'Female';
+          } else {
+            gender = 'Other';
+          }
+        }
+
+        if (country == null) {
+          for (var countryName in countryNames) {
+            if (line.contains(countryName.toLowerCase()) ||
+                _isFuzzyMatch(line, countryName.toLowerCase())) {
+              country = countryName;
+              break;
+            }
+          }
+          if (line.contains('jamhuri ya kenya') ||
+              line.contains('republic of kenya')) {
+            country = 'Kenya';
+          }
+        }
+
+        if (isNameField || isSexField || isIdField) {
+          isNameField = false;
+          isSexField = false;
+          isIdField = false;
+        }
+      }
+
+      if (name != null) {
+        name =
+            name
+                .split(' ')
+                .map(
+                  (word) =>
+                      word.isNotEmpty
+                          ? '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}'
+                          : '',
+                )
+                .join(' ')
+                .trim();
+        final nameValidationResult = Validators.validateName(name);
+        if (nameValidationResult != null && nameValidationResult.isNotEmpty) {
+          name = null;
+        }
+      }
+
+      if (idNumber != null) {
+        final idValidationResult = Provider.of<VisitorProvider>(
+          context,
+          listen: false,
+        ).validateIdNumber(idNumber, _selectedIdType);
+        if (idValidationResult != null) {
+          idNumber = null;
+        }
+      }
+
+      if (idNumber == null) {
+        if (mounted) {
+          setState(() => _isScanning = false);
+          _showErrorDialog(
+            'Could not extract ID number. Please verify the image or enter manually.',
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _idNumberController.text = idNumber ?? '';
+          if (name != null) _nameController.text = name;
+          if (country != null) _countryController.text = country;
+          if (gender != null) _selectedGender = gender;
+          _isMinor = _selectedIdType == 'birth_certificate_number';
+          _isScanning = false;
+        });
+      }
+
+      final visitorProvider = Provider.of<VisitorProvider>(
+        context,
+        listen: false,
+      );
+      final response = await visitorProvider.checkExistingVisitor(
+        idNumber,
+        _selectedIdType,
+      );
+      if (response != null &&
+          (response['exists'] == true || response['exists'] == 'true') &&
+          response['visitor'] != null &&
+          mounted) {
+        final existingVisitor = response['visitor'] as Map<String, dynamic>;
+        final visitorStatus =
+            response['visitorStatus']?.toString() ?? 'unknown';
+        _showExistingVisitorDialog(
+          existingVisitor,
+          visitorStatus: visitorStatus,
+        );
+      } else if (name != null && gender != null && country != null) {
+        bool? confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) {
+            debugPrint('ℹ️ Building confirmation dialog for scanned data');
+            return AlertDialog(
+              title: Text(
+                'Confirm Extracted Data',
+                style: GoogleFonts.afacad(),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('ID Number: $idNumber', style: GoogleFonts.afacad()),
+                    Text('Full Name: $name', style: GoogleFonts.afacad()),
+                    Text('Gender: $gender', style: GoogleFonts.afacad()),
+                    Text('Country: $country', style: GoogleFonts.afacad()),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text('Edit', style: GoogleFonts.afacad()),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text('Confirm', style: GoogleFonts.afacad()),
+                ),
+              ],
+            );
+          },
+        ).then((value) {
+          debugPrint('ℹ️ Confirmation dialog closed with result: $value');
+          return value;
+        });
+
+        if (confirmed != true && mounted) {
+          setState(() {
+            _idNumberController.clear();
+            _nameController.clear();
+            _countryController.text = 'Kenya';
+            _selectedGender = null;
+            _idValidationError = null;
+          });
+        }
+      } else {
+        final missingFields = [
+          if (name == null) 'full name',
+          if (gender == null) 'gender',
+          if (country == null) 'country',
+        ].join(', ');
+        if (mounted) {
+          _showErrorDialog(
+            'Could not extract $missingFields. Please verify the image or enter manually.',
+          );
+        }
+      }
+    } catch (e, stackTrace) {
+      if (mounted) {
+        setState(() => _isScanning = false);
+        _showErrorDialog('Scanning failed: $e');
+      }
+      debugPrint('❌ Error during scanning: $e\n$stackTrace');
+    }
+  }
+
+  bool _isFuzzyMatch(String input, String pattern) {
+    input = input.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+    pattern = pattern.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+    int differences = 0;
+    if (input.length < pattern.length || input.length > pattern.length + 3) {
+      return false;
+    }
+    for (int i = 0; i < input.length && i < pattern.length; i++) {
+      if (input[i] != pattern[i]) differences++;
+      if (differences > 2) return false;
+    }
+    return true;
+  }
+
+  void _showErrorDialog(String message) {
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: Text(
+                'Error',
+                style: GoogleFonts.afacad(fontWeight: FontWeight.bold),
+              ),
+              content: Text(message, style: GoogleFonts.afacad()),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text('OK', style: GoogleFonts.afacad()),
+                ),
+              ],
+            ),
+      );
+    }
+  }
+
+  void _showExistingVisitorDialog(
+    Map<String, dynamic> visitorData, {
+    required String visitorStatus,
+  }) {
+    debugPrint(
+      'ℹ️ Showing existing visitor dialog with data: $visitorData, visitorStatus: $visitorStatus',
+    );
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) {
+          debugPrint('ℹ️ Building AlertDialog for visitor: $visitorData');
+          final isCheckedIn = visitorStatus == 'active';
+          return AlertDialog(
+            title: Text(
+              'Existing Visitor Found',
+              style: GoogleFonts.afacad(fontWeight: FontWeight.bold),
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ID: ${visitorData['identification_number']?.toString() ?? 'Unknown'}',
+                    style: GoogleFonts.afacad(),
+                  ),
+                  Text(
+                    'Name: ${visitorData['name']?.toString() ?? 'Not provided'}',
+                    style: GoogleFonts.afacad(),
+                  ),
+                  Text(
+                    'Phone: ${visitorData['phone_number']?.toString() ?? 'Not provided'}',
+                    style: GoogleFonts.afacad(),
+                  ),
+                  Text(
+                    'Status: ${visitorStatus == 'active'
+                        ? 'Active (Checked In)'
+                        : visitorStatus == 'completed'
+                        ? 'Completed (Checked Out)'
+                        : 'Unknown'}',
+                    style: GoogleFonts.afacad(),
+                  ),
+                  if (visitorData['tag'] != null)
+                    Text(
+                      'Tag: ${(visitorData['tag']['tag_number']?.toString().isNotEmpty ?? false) ? visitorData['tag']['tag_number'] : 'Tag ${visitorData['tag']['id'] ?? 'Unknown'}'}',
+                      style: GoogleFonts.afacad(),
+                    ),
+                  Text(
+                    isCheckedIn
+                        ? 'This visitor is currently active at this gate.'
+                        : 'This visitor has been registered before. Would you like to create a new visit for this visitor or start a new registration?',
+                    style: GoogleFonts.afacad(),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              if (!isCheckedIn) ...[
+                TextButton(
+                  onPressed: () {
+                    if (mounted) {
+                      setState(() {
+                        _nameController.text =
+                            visitorData['name']?.toString() ?? '';
+                        _phoneController.text =
+                            visitorData['phone_number']
+                                ?.toString()
+                                .replaceFirst('+254', '') ??
+                            '';
+                        _countryController.text =
+                            visitorData['country']?.toString() ?? 'Kenya';
+                        _selectedGender = visitorData['gender']?.toString();
+                        _isMinor = visitorData['is_minor'] == true;
+                        if (_isMinor) {
+                          _guardianPhoneController.text =
+                              visitorData['guardian_phone']
+                                  ?.toString()
+                                  .replaceFirst('+254', '') ??
+                              '';
+                        }
+                        _idValidationError = null;
+                      });
+                      Navigator.of(context).pop();
+                      if (_idFormKey.currentState?.validate() ?? false) {
+                        setState(() => _currentStep += 1);
+                      }
+                    }
+                  },
+                  child: Text('Create New Visit', style: GoogleFonts.afacad()),
+                ),
+                TextButton(
+                  onPressed: () {
+                    if (mounted) {
+                      setState(() {
+                        _idValidationError = null;
+                        _nameController.clear();
+                        _phoneController.clear();
+                        _guardianPhoneController.clear();
+                        _countryController.text = 'Kenya';
+                        _selectedGender = null;
+                        _isMinor = false;
+                      });
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: Text('Register New', style: GoogleFonts.afacad()),
+                ),
+              ],
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('Cancel', style: GoogleFonts.afacad()),
+              ),
+            ],
+          );
+        },
+      ).then((_) {
+        debugPrint('ℹ️ Existing visitor dialog closed');
+      });
+    }
+  }
+
+  InputDecoration _buildInputDecoration(
+    String label,
+    IconData icon, {
+    bool isRequired = true,
+    bool solo = false,
+  }) {
     return InputDecoration(
       labelText: '$label${isRequired ? ' *' : ''}',
-      labelStyle: GoogleFonts.lexend(
+      labelStyle: GoogleFonts.afacad(
         color: isRequired ? AppColors.primaryBlue : Colors.grey.shade600,
       ),
       hintText: 'Enter $label',
-      hintStyle: GoogleFonts.lexend(color: Colors.grey.shade400),
-      prefixIcon: Icon(icon, color: AppColors.primaryBlue),
+      hintStyle: GoogleFonts.afacad(color: Colors.grey.shade400),
+      prefixIcon: solo ? null : Icon(icon, color: AppColors.primaryBlue),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide(color: Colors.grey.shade300),
@@ -189,14 +971,18 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
       ),
       filled: true,
       fillColor: Colors.grey.shade50,
-      contentPadding: EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-      errorStyle: GoogleFonts.lexend(color: AppColors.error, fontSize: 12),
+      contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      errorStyle: GoogleFonts.afacad(color: AppColors.error, fontSize: 12),
     );
   }
 
-  Widget _buildSectionHeader(String title, IconData icon) {
+  Widget _buildSectionHeader(
+    String title,
+    IconData icon, {
+    bool showScanButton = false,
+  }) {
     return Container(
-      padding: EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(color: Colors.grey.shade200, width: 1),
@@ -205,30 +991,30 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
       child: Row(
         children: [
           Icon(icon, color: AppColors.primaryBlue, size: 22),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           Text(
             title,
-            style: GoogleFonts.lexend(
+            style: GoogleFonts.afacad(
               fontSize: 18,
               fontWeight: FontWeight.w600,
               color: AppColors.primaryBlue,
             ),
           ),
-          Spacer(),
-          if (_currentStep == 0 && _idNumberController.text.isEmpty)
+          const Spacer(),
+          if (showScanButton)
             TextButton.icon(
-              onPressed: _scanID,
-              icon: Icon(Icons.qr_code_scanner, size: 20),
-              label: Text(
-                'Scan ID',
-                style: GoogleFonts.lexend(fontSize: 14),
-              ),
+              onPressed: _isScanning ? null : _scanID,
+              icon: const Icon(Icons.camera_alt, size: 20),
+              label: Text('Scan ID', style: GoogleFonts.afacad(fontSize: 14)),
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.primaryBlue,
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
-                  side: BorderSide(color: AppColors.primaryBlue),
+                  side: const BorderSide(color: AppColors.primaryBlue),
                 ),
               ),
             ),
@@ -243,97 +1029,105 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionHeader('Identification Details', Icons.credit_card),
-          SizedBox(height: 20),
+          _buildSectionHeader(
+            'Identification Details',
+            Icons.credit_card,
+            showScanButton: _idNumberController.text.isEmpty,
+          ),
+          const SizedBox(height: 20),
           if (_isScanning)
             Center(
               child: Column(
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 10),
-                  Text('Scanning ID...', style: GoogleFonts.lexend()),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 10),
+                  Text('Scanning ID...', style: GoogleFonts.afacad()),
                 ],
               ),
             )
           else ...[
-            Row(
-              children: [
-                Expanded(
-                  flex: 4,
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedIdType,
-                    decoration: _buildInputDecoration(
-                      'ID Type',
-                      Icons.credit_card,
-                      isRequired: true,
-                    ),
-                    items: _idTypeOptions.map((option) => DropdownMenuItem(
-                      value: option['value'],
-                      child: Text(
-                        option['label']!,
-                        style: GoogleFonts.lexend(),
-                      ),
-                    )).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedIdType = value!;
-                        _isMinor = value == 'birth_certificate_number';
-                        _idNumberController.clear();
-                        _idValidationError = null;
-                      });
-                    },
-                    validator: (value) => value == null 
-                        ? 'Please select an ID type' 
-                        : null,
-                  ),
+            DropdownButtonFormField<String>(
+              value: _selectedIdType,
+              decoration: _buildInputDecoration(
+                'ID Type',
+                Icons.credit_card,
+                solo: true,
+              ),
+              items:
+                  _idTypeOptions
+                      .map(
+                        (option) => DropdownMenuItem(
+                          value: option['value'],
+                          child: Text(
+                            option['label']!,
+                            style: GoogleFonts.afacad(),
+                          ),
+                        ),
+                      )
+                      .toList(),
+              onChanged: (value) {
+                if (mounted) {
+                  setState(() {
+                    _selectedIdType = value!;
+                    _isMinor = value == 'birth_certificate_number';
+                    _idNumberController.clear();
+                    _nameController.clear();
+                    _countryController.text = 'Kenya';
+                    _selectedGender = null;
+                    _idValidationError = null;
+                  });
+                }
+              },
+              validator:
+                  (value) => value == null ? 'Please select an ID type' : null,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _idNumberController,
+              decoration: _buildInputDecoration(
+                'ID Number',
+                Icons.numbers,
+                solo: true,
+              ).copyWith(
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.camera_alt),
+                  onPressed: _isScanning ? null : _scanID,
+                  tooltip: 'Scan ID',
                 ),
-                SizedBox(width: 16),
-                Expanded(
-                  flex: 5,
-                  child: TextFormField(
-                    controller: _idNumberController,
-                    decoration: _buildInputDecoration(
-                      'ID Number', 
-                      Icons.numbers,
-                      isRequired: true,
-                    ).copyWith(
-                      suffixIcon: IconButton(
-                        icon: Icon(Icons.qr_code_scanner),
-                        onPressed: _scanID,
-                        tooltip: 'Scan ID',
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Please enter an ID number';
-                      }
-                      return Provider.of<VisitorProvider>(context, listen: false)
-                          .validateIdNumber(value.trim(), _selectedIdType);
-                    },
-                    keyboardType: TextInputType.text,
-                    inputFormatters: [
-                      if (_selectedIdType == 'national_id')
-                        FilteringTextInputFormatter.digitsOnly,
-                    ],
-                  ),
-                ),
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Please enter an ID number';
+                }
+                return Provider.of<VisitorProvider>(
+                  context,
+                  listen: false,
+                ).validateIdNumber(value.trim(), _selectedIdType);
+              },
+              keyboardType:
+                  _selectedIdType == 'national_id'
+                      ? TextInputType.number
+                      : TextInputType.text,
+              inputFormatters: [
+                if (_selectedIdType == 'national_id')
+                  FilteringTextInputFormatter.digitsOnly,
               ],
             ),
             if (_idValidationError != null)
               Padding(
-                padding: EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   _idValidationError!,
-                  style: GoogleFonts.lexend(
-                    color: AppColors.error, 
+                  style: GoogleFonts.afacad(
+                    color: AppColors.error,
                     fontSize: 12,
                   ),
                 ),
               ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text(
               'Fields marked with * are mandatory',
-              style: GoogleFonts.lexend(
+              style: GoogleFonts.afacad(
                 color: Colors.grey.shade600,
                 fontSize: 12,
                 fontStyle: FontStyle.italic,
@@ -346,6 +1140,10 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
   }
 
   Widget _buildPersonalDetailsStep() {
+    final visitorProvider = Provider.of<VisitorProvider>(
+      context,
+      listen: false,
+    );
     return Form(
       key: _personalFormKey,
       child: SingleChildScrollView(
@@ -353,206 +1151,234 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildSectionHeader('Personal Details', Icons.person),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             TextFormField(
               controller: _nameController,
               decoration: _buildInputDecoration(
-                'Full Name', 
+                'Full Name',
                 Icons.person_outline,
-                isRequired: true,
+                solo: true,
               ),
               validator: Validators.validateName,
               keyboardType: TextInputType.name,
             ),
-            SizedBox(height: 16),
-            Row(
-              children: [
-                Container(
-                  width: 100,
-                  child: TextFormField(
-                    decoration: _buildInputDecoration(
-                      'Code', 
-                      Icons.phone,
-                      isRequired: true,
-                    ),
-                    controller: TextEditingController(text: _phoneCountryCode),
-                    readOnly: true,
-                  ),
-                ),
-                SizedBox(width: 16),
-                Expanded(
-                  child: TextFormField(
-                    controller: _phoneController,
-                    decoration: _buildInputDecoration(
-                      'Phone Number',
-                      Icons.phone_outlined,
-                      isRequired: true,
-                    ),
-                    validator: Validators.validatePhoneNumber,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                    ],
-                  ),
-                ),
-              ],
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _selectedGender,
+              decoration: _buildInputDecoration(
+                'Gender',
+                Icons.person,
+                solo: true,
+              ),
+              items:
+                  _genderOptions
+                      .map(
+                        (option) => DropdownMenuItem(
+                          value: option['value'],
+                          child: Text(
+                            option['label']!,
+                            style: GoogleFonts.afacad(),
+                          ),
+                        ),
+                      )
+                      .toList(),
+              onChanged: (value) {
+                if (mounted) {
+                  setState(() => _selectedGender = value);
+                }
+              },
+              validator:
+                  (value) => value == null ? 'Please select a gender' : null,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _phoneController,
+              decoration: _buildInputDecoration(
+                'Phone Number',
+                Icons.phone_outlined,
+                solo: true,
+              ).copyWith(
+                prefixText: '$_phoneCountryCode ',
+                prefixStyle: GoogleFonts.afacad(color: Colors.black),
+              ),
+              validator:
+                  (value) => Validators.validatePhoneNumber(value?.trim()),
+              keyboardType: TextInputType.phone,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             ),
             if (_isMinor) ...[
-              SizedBox(height: 16),
-              Row(
-                children: [
-                  Container(
-                    width: 100,
-                    child: TextFormField(
-                      decoration: _buildInputDecoration(
-                        'Code', 
-                        Icons.phone,
-                        isRequired: true,
-                      ),
-                      controller: TextEditingController(text: _phoneCountryCode),
-                      readOnly: true,
-                    ),
-                  ),
-                  SizedBox(width: 16),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _guardianPhoneController,
-                      decoration: _buildInputDecoration(
-                        'Guardian Phone',
-                        Icons.phone_outlined,
-                        isRequired: true,
-                      ),
-                      validator: Validators.validatePhoneNumber,
-                      keyboardType: TextInputType.phone,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _guardianPhoneController,
+                decoration: _buildInputDecoration(
+                  'Guardian Phone',
+                  Icons.phone_outlined,
+                  solo: true,
+                ).copyWith(
+                  prefixText: '$_phoneCountryCode ',
+                  prefixStyle: GoogleFonts.afacad(color: Colors.black),
+                ),
+                validator: Validators.validatePhoneNumber,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
             ],
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _countryController,
               decoration: _buildInputDecoration(
-                'Country', 
+                'Country',
                 Icons.public,
-                isRequired: true,
+                solo: true,
               ),
               validator: Validators.validateCountry,
               keyboardType: TextInputType.text,
             ),
-            SizedBox(height: 24),
+            const SizedBox(height: 24),
             _buildSectionHeader('Visit Details', Icons.work_outline),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               value: _visitType,
               decoration: _buildInputDecoration(
-                'Visit Type', 
+                'Visit Type',
                 Icons.work_outline,
-                isRequired: true,
+                solo: true,
               ),
-              items: _visitTypeOptions.map((option) => DropdownMenuItem(
-                value: option['value'],
-                child: Text(
-                  option['label']!,
-                  style: GoogleFonts.lexend(),
-                ),
-              )).toList(),
+              items:
+                  _visitTypeOptions
+                      .map(
+                        (option) => DropdownMenuItem(
+                          value: option['value'],
+                          child: Text(
+                            option['label']!,
+                            style: GoogleFonts.afacad(),
+                          ),
+                        ),
+                      )
+                      .toList(),
               onChanged: (value) {
-                setState(() {
-                  _visitType = value!;
-                  _selectedHost = null;
-                  _hostNameController.clear();
-                  _hostPhoneController.clear();
-                  _hostEmailController.clear();
-                  _hostDepartmentController.clear();
-                  _hostPositionController.clear();
-                  _officeNameController.clear();
-                  _officePhoneController.clear();
-                  _officeEmailController.clear();
-                  _officeDepartmentController.clear();
-                  _officeContactPersonController.clear();
-                });
+                if (mounted) {
+                  setState(() {
+                    _visitType = value!;
+                    _hostNameController.clear();
+                    _hostPhoneController.clear();
+                    _hostEmailController.clear();
+                    _hostDepartmentController.clear();
+                    _hostPositionController.clear();
+                    _officeNameController.clear();
+                    _officePhoneController.clear();
+                    _officeEmailController.clear();
+                    _officeDepartmentController.clear();
+                    _officeContactPersonController.clear();
+                    _selectedFloorId = null;
+                  });
+                }
               },
-              validator: (value) => value == null 
-                  ? 'Please select a visit type' 
-                  : null,
+              validator:
+                  (value) =>
+                      value == null ? 'Please select a visit type' : null,
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _selectedFloorId,
+              decoration: _buildInputDecoration(
+                'Floor',
+                Icons.stairs_outlined,
+                isRequired: false,
+                solo: true,
+              ),
+              items:
+                  visitorProvider.floors?.isNotEmpty ?? false
+                      ? visitorProvider.floors!
+                          .map(
+                            (floor) => DropdownMenuItem(
+                              value: floor['id']?.toString(),
+                              child: Text(
+                                floor['name']?.toString() ??
+                                    'Floor ${floor['id']}',
+                                style: GoogleFonts.afacad(),
+                              ),
+                            ),
+                          )
+                          .toList()
+                      : [
+                        const DropdownMenuItem(
+                          value: null,
+                          child: Text(
+                            'No floors available',
+                            style: TextStyle(fontFamily: 'afacad'),
+                          ),
+                        ),
+                      ],
+              onChanged: (value) {
+                if (mounted) {
+                  setState(() => _selectedFloorId = value);
+                }
+              },
+            ),
+            const SizedBox(height: 16),
             if (_visitType == 'staff') ...[
               TextFormField(
                 controller: _hostNameController,
                 decoration: _buildInputDecoration(
-                  'Host Name', 
+                  'Host Name',
                   Icons.person_outline,
                   isRequired: true,
+                  solo: true,
                 ),
                 validator: Validators.validateName,
                 keyboardType: TextInputType.name,
               ),
-              SizedBox(height: 16),
-              Row(
-                children: [
-                  Container(
-                    width: 100,
-                    child: TextFormField(
-                      decoration: _buildInputDecoration(
-                        'Code', 
-                        Icons.phone,
-                        isRequired: true,
-                      ),
-                      controller: TextEditingController(text: _phoneCountryCode),
-                      readOnly: true,
-                    ),
-                  ),
-                  SizedBox(width: 16),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _hostPhoneController,
-                      decoration: _buildInputDecoration(
-                        'Host Phone',
-                        Icons.phone_outlined,
-                        isRequired: true,
-                      ),
-                      validator: Validators.validatePhoneNumber,
-                      keyboardType: TextInputType.phone,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _hostPhoneController,
+                decoration: _buildInputDecoration(
+                  'Host Phone',
+                  Icons.phone_outlined,
+                  isRequired: true,
+                  solo: true,
+                ).copyWith(
+                  prefixText: '$_phoneCountryCode ',
+                  prefixStyle: GoogleFonts.afacad(color: Colors.black),
+                ),
+                validator: Validators.validatePhoneNumber,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _hostEmailController,
                 decoration: _buildInputDecoration(
-                  'Host Email', 
+                  'Host Email',
                   Icons.email_outlined,
                   isRequired: false,
+                  solo: true,
                 ),
-                validator: Validators.validateEmail,
+                validator:
+                    _hostEmailController.text.isNotEmpty
+                        ? Validators.validateEmail
+                        : null,
                 keyboardType: TextInputType.emailAddress,
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _hostDepartmentController,
                 decoration: _buildInputDecoration(
-                  'Host Department', 
+                  'Host Department',
                   Icons.business_outlined,
                   isRequired: false,
+                  solo: true,
                 ),
                 keyboardType: TextInputType.text,
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _hostPositionController,
                 decoration: _buildInputDecoration(
-                  'Host Position', 
+                  'Host Position',
                   Icons.work_outline,
                   isRequired: false,
+                  solo: true,
                 ),
                 keyboardType: TextInputType.text,
               ),
@@ -561,86 +1387,74 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
               TextFormField(
                 controller: _officeNameController,
                 decoration: _buildInputDecoration(
-                  'Office Name', 
+                  'Office Name',
                   Icons.business_outlined,
-                  isRequired: true,
+                  solo: true,
                 ),
                 validator: Validators.validateRequired,
                 keyboardType: TextInputType.text,
               ),
-              SizedBox(height: 16),
-              Row(
-                children: [
-                  Container(
-                    width: 100,
-                    child: TextFormField(
-                      decoration: _buildInputDecoration(
-                        'Code', 
-                        Icons.phone,
-                        isRequired: true,
-                      ),
-                      controller: TextEditingController(text: _phoneCountryCode),
-                      readOnly: true,
-                    ),
-                  ),
-                  SizedBox(width: 16),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _officePhoneController,
-                      decoration: _buildInputDecoration(
-                        'Office Phone',
-                        Icons.phone_outlined,
-                        isRequired: true,
-                      ),
-                      validator: Validators.validatePhoneNumber,
-                      keyboardType: TextInputType.phone,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _officePhoneController,
+                decoration: _buildInputDecoration(
+                  'Office Phone',
+                  Icons.phone_outlined,
+                  solo: true,
+                ).copyWith(
+                  prefixText: '$_phoneCountryCode ',
+                  prefixStyle: GoogleFonts.afacad(color: Colors.black),
+                ),
+                validator: Validators.validatePhoneNumber,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _officeEmailController,
                 decoration: _buildInputDecoration(
-                  'Office Email', 
+                  'Office Email',
                   Icons.email_outlined,
                   isRequired: false,
+                  solo: true,
                 ),
-                validator: Validators.validateEmail,
+                validator:
+                    _officeEmailController.text.isNotEmpty
+                        ? Validators.validateEmail
+                        : null,
                 keyboardType: TextInputType.emailAddress,
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _officeDepartmentController,
                 decoration: _buildInputDecoration(
-                  'Office Department', 
+                  'Office Department',
                   Icons.business_outlined,
                   isRequired: false,
+                  solo: true,
                 ),
                 keyboardType: TextInputType.text,
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _officeContactPersonController,
                 decoration: _buildInputDecoration(
-                  'Contact Person', 
+                  'Contact Person',
                   Icons.person_outline,
-                  isRequired: true,
+                  solo: true,
                 ),
                 validator: Validators.validateName,
                 keyboardType: TextInputType.name,
               ),
             ],
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _appointmentController,
               decoration: _buildInputDecoration(
-                'Appointment Details', 
+                'Appointment Details',
                 Icons.event_outlined,
                 isRequired: false,
+                solo: true,
               ),
               keyboardType: TextInputType.text,
               maxLines: 2,
@@ -652,22 +1466,52 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
   }
 
   Widget _buildEntryDetailsStep() {
-    final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
-    final availableTags = visitorProvider.gateId != null
-        ? visitorProvider.visitorTags.where((tag) {
-            final gateMatch = tag['visitor_gate_id']?.toString() ==
-                visitorProvider.gateId?.toString();
-            final unassigned = tag['is_assigned'] == false ||
-                tag['is_assigned'].toString() == 'false';
-            return gateMatch && unassigned;
-          }).toList()
-        : [];
+    final visitorProvider = Provider.of<VisitorProvider>(
+      context,
+      listen: false,
+    );
+    final availableTags =
+        visitorProvider.gateId != null
+            ? visitorProvider.visitorTags
+                .where((tag) {
+                  final gateMatch =
+                      tag['visitor_gate_id']?.toString() ==
+                      visitorProvider.gateId?.toString();
+                  final unassigned = tag['is_assigned'] == false;
+                  debugPrint(
+                    'Tag: $tag, Gate Match: $gateMatch, Unassigned: $unassigned',
+                  );
+                  return gateMatch && unassigned;
+                })
+                .map((tag) {
+                  final updatedTag = Map<String, dynamic>.from(tag);
+                  if (updatedTag['tag_number'] == null ||
+                      updatedTag['tag_number'].toString().isEmpty) {
+                    updatedTag['tag_number'] =
+                        'Tag ${updatedTag['id'] ?? 'Unknown'}';
+                    debugPrint(
+                      '⚠️ Assigned fallback tag_number: ${updatedTag['tag_number']} for tag ID: ${updatedTag['id']}',
+                    );
+                  }
+                  return updatedTag;
+                })
+                .toList()
+            : [];
+    debugPrint('Available Tags: $availableTags');
 
     if (_selectedVisitorTagId != null &&
         !availableTags.any(
-            (tag) => tag['id']?.toString() == _selectedVisitorTagId)) {
-      _selectedVisitorTagId =
-          availableTags.isNotEmpty ? availableTags.first['id']?.toString() : null;
+          (tag) => tag['id']?.toString() == _selectedVisitorTagId,
+        )) {
+      if (mounted) {
+        setState(() {
+          _selectedVisitorTagId =
+              availableTags.isNotEmpty
+                  ? availableTags.first['id']?.toString()
+                  : null;
+        });
+      }
+      debugPrint('Reset Selected Visitor Tag ID: $_selectedVisitorTagId');
     }
 
     final hasValidGate =
@@ -680,155 +1524,195 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildSectionHeader('Entry Details', Icons.directions),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             DropdownButtonFormField<String>(
               value: _selectedDestinationId,
               decoration: _buildInputDecoration(
-                'Destination', 
+                'Destination',
                 Icons.location_on_outlined,
-                isRequired: true,
+                solo: true,
               ),
-              items: visitorProvider.destinations.isNotEmpty
-                  ? visitorProvider.destinations.map((dest) => DropdownMenuItem(
-                      value: dest['id']?.toString(),
-                      child: Text(
-                        dest['name']?.toString() ?? 'Unknown',
-                        style: GoogleFonts.lexend(),
-                      ),
-                    )).toList()
-                  : [
-                      DropdownMenuItem(
-                        value: null,
-                        child: Text(
-                          'No destinations available',
-                          style: GoogleFonts.lexend(),
+              items:
+                  visitorProvider.destinations.isNotEmpty
+                      ? visitorProvider.destinations
+                          .map(
+                            (dest) => DropdownMenuItem(
+                              value: dest['id']?.toString(),
+                              child: Text(
+                                dest['name']?.toString() ?? 'Unknown',
+                                style: GoogleFonts.afacad(),
+                              ),
+                            ),
+                          )
+                          .toList()
+                      : [
+                        const DropdownMenuItem(
+                          value: null,
+                          child: Text(
+                            'No destinations available',
+                            style: TextStyle(fontFamily: 'afacad'),
+                          ),
                         ),
-                      ),
-                    ],
-              onChanged: visitorProvider.destinations.isNotEmpty
-                  ? (value) {
-                      setState(() {
-                        _selectedDestinationId = value;
-                      });
-                    }
-                  : null,
-              validator: (value) => visitorProvider.destinations.isEmpty
-                  ? 'No destinations available'
-                  : (value == null ? 'Please select a destination' : null),
+                      ],
+              onChanged:
+                  visitorProvider.destinations.isNotEmpty
+                      ? (value) {
+                        if (mounted) {
+                          setState(() {
+                            _selectedDestinationId = value;
+                            _selectedFloorId = null;
+                          });
+                        }
+                      }
+                      : null,
+              validator:
+                  (value) =>
+                      visitorProvider.destinations.isEmpty
+                          ? 'No destinations available'
+                          : (value == null
+                              ? 'Please select a destination'
+                              : null),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               value: _selectedVisitorTagId,
               decoration: _buildInputDecoration(
-                'Visitor Tag', 
+                'Visitor Tag',
                 Icons.tag_outlined,
-                isRequired: true,
+                solo: true,
               ),
-              items: availableTags.isNotEmpty
-                  ? availableTags.map((tag) => DropdownMenuItem(
-                      value: tag['id']?.toString(),
-                      child: Text(
-                        tag['tag_number']?.toString() ?? 'Tag ${tag['id']}',
-                        style: GoogleFonts.lexend(),
-                      ),
-                    )).toList()
-                  : [
-                      DropdownMenuItem(
-                        value: null,
-                        child: Text(
-                          'No tags available',
-                          style: GoogleFonts.lexend(),
+              items:
+                  availableTags.isNotEmpty
+                      ? availableTags
+                          .map(
+                            (tag) => DropdownMenuItem(
+                              value: tag['id']?.toString(),
+                              child: Text(
+                                tag['tag_number'].toString(),
+                                style: GoogleFonts.afacad(),
+                              ),
+                            ),
+                          )
+                          .toList()
+                      : [
+                        const DropdownMenuItem(
+                          value: null,
+                          child: Text(
+                            'No tags available',
+                            style: TextStyle(fontFamily: 'afacad'),
+                          ),
                         ),
-                      ),
-                    ],
-              onChanged: availableTags.isNotEmpty
-                  ? (value) {
-                      setState(() {
-                        _selectedVisitorTagId = value;
-                      });
-                    }
-                  : null,
-              validator: (value) => availableTags.isEmpty
-                  ? 'No unassigned visitor tags available'
-                  : (value == null ? 'Please select a visitor tag' : null),
+                      ],
+              onChanged:
+                  availableTags.isNotEmpty
+                      ? (value) {
+                        if (mounted) {
+                          setState(() => _selectedVisitorTagId = value);
+                        }
+                      }
+                      : null,
+              validator:
+                  (value) =>
+                      availableTags.isEmpty
+                          ? 'No unassigned visitor tags available. Contact administrator.'
+                          : (value == null
+                              ? 'Please select a visitor tag'
+                              : null),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               value: hasValidGate ? _selectedGate : null,
               decoration: _buildInputDecoration(
-                'Visitor Gate', 
+                'Visitor Gate',
                 Icons.door_front_door_outlined,
-                isRequired: true,
+                solo: true,
               ),
-              items: hasValidGate
-                  ? [
-                      DropdownMenuItem(
-                        value: visitorProvider.gateId?.toString(),
-                        child: Text(
-                          visitorProvider.deviceGate ?? 'Unknown',
-                          style: GoogleFonts.lexend(),
+              items:
+                  hasValidGate
+                      ? [
+                        DropdownMenuItem(
+                          value: visitorProvider.gateId?.toString(),
+                          child: Text(
+                            visitorProvider.deviceGate ?? 'Unknown',
+                            style: GoogleFonts.afacad(),
+                          ),
                         ),
-                      ),
-                    ]
-                  : [
-                      DropdownMenuItem(
-                        value: null,
-                        child: Text(
-                          'No gate assigned',
-                          style: GoogleFonts.lexend(),
+                      ]
+                      : [
+                        const DropdownMenuItem(
+                          value: null,
+                          child: Text(
+                            'No gate assigned',
+                            style: TextStyle(fontFamily: 'afacad'),
+                          ),
                         ),
-                      ),
-                    ],
-              onChanged: hasValidGate
-                  ? (value) {
-                      setState(() {
-                        _selectedGate = value;
-                      });
-                    }
-                  : null,
-              validator: (value) => !hasValidGate
-                  ? 'No gate assigned to device'
-                  : (value == null ? 'Please select a visitor gate' : null),
+                      ],
+              onChanged:
+                  hasValidGate
+                      ? (value) {
+                        if (mounted) {
+                          setState(() => _selectedGate = value);
+                        }
+                      }
+                      : null,
+              validator:
+                  (value) =>
+                      !hasValidGate
+                          ? 'No gate assigned to device'
+                          : (value == null
+                              ? 'Please select a visitor gate'
+                              : null),
             ),
-            SizedBox(height: 24),
-            _buildSectionHeader('Vehicle Details', Icons.directions_car_outlined),
-            SizedBox(height: 16),
+            const SizedBox(height: 24),
+            _buildSectionHeader(
+              'Vehicle Details',
+              Icons.directions_car_outlined,
+            ),
+            const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _vehicleTypeController.text.isNotEmpty
-                  ? _vehicleTypeController.text
-                  : null,
+              value:
+                  _vehicleTypeController.text.isNotEmpty
+                      ? _vehicleTypeController.text
+                      : null,
               decoration: _buildInputDecoration(
-                'Vehicle Type', 
+                'Vehicle Type',
                 Icons.directions_car_outlined,
                 isRequired: false,
+                solo: true,
               ),
-              items: _vehicleTypeOptions.map((option) => DropdownMenuItem(
-                value: option['value'],
-                child: Text(
-                  option['label']!,
-                  style: GoogleFonts.lexend(),
-                ),
-              )).toList(),
+              items:
+                  _vehicleTypeOptions
+                      .map(
+                        (option) => DropdownMenuItem(
+                          value: option['value'],
+                          child: Text(
+                            option['label']!,
+                            style: GoogleFonts.afacad(),
+                          ),
+                        ),
+                      )
+                      .toList(),
               onChanged: (value) {
-                setState(() {
-                  _vehicleTypeController.text = value!;
-                });
+                if (mounted) {
+                  setState(() => _vehicleTypeController.text = value!);
+                }
               },
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _vehicleRegController,
               decoration: _buildInputDecoration(
-                'Vehicle Registration', 
+                'Vehicle Registration',
                 Icons.confirmation_number_outlined,
                 isRequired: false,
+                solo: true,
               ),
               keyboardType: TextInputType.text,
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text(
               '* Mandatory fields',
-              style: GoogleFonts.lexend(
+              style: GoogleFonts.afacad(
                 color: Colors.grey.shade600,
                 fontSize: 12,
                 fontStyle: FontStyle.italic,
@@ -842,59 +1726,440 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
 
   void _handleBack() {
     if (_currentStep > 0) {
-      setState(() {
-        _currentStep -= 1;
-      });
+      if (mounted) {
+        setState(() => _currentStep -= 1);
+      }
     } else {
       Navigator.of(context).pop();
     }
   }
 
-  void _handleNext() async {
+  Future<void> _handleNext() async {
+    FormState? currentFormKey;
     if (_currentStep == 0) {
-      if (_idFormKey.currentState?.validate() ?? false) {
-        setState(() {
-          _currentStep = 1;
-        });
+      currentFormKey = _idFormKey.currentState;
+      if (currentFormKey?.validate() ?? false) {
+        await _checkExistingVisitor();
+        if (_idValidationError != null &&
+            _idValidationError!.contains('active') &&
+            mounted) {
+          _showErrorDialog(_idValidationError!);
+          return;
+        }
+      } else {
+        return;
       }
     } else if (_currentStep == 1) {
-      if (_personalFormKey.currentState?.validate() ?? false) {
-        setState(() {
-          _currentStep = 2;
-        });
-      }
+      currentFormKey = _personalFormKey.currentState;
     } else if (_currentStep == 2) {
-      if (_entryFormKey.currentState?.validate() ?? false) {
-        setState(() {
-          _isLoading = true;
-        });
-        try {
-          // TODO: Implement registration logic here.
-          // After successful registration:
-          setState(() {
-            _isLoading = false;
-          });
-          Navigator.of(context).pop(); // Or show a success dialog/snackbar
-        } catch (e) {
-          setState(() {
-            _isLoading = false;
-          });
-          _showErrorDialog('Registration failed: $e');
+      currentFormKey = _entryFormKey.currentState;
+    }
+
+    if (currentFormKey?.validate() ?? false) {
+      if (_currentStep == 1) {
+        if (_phoneController.text.trim().isEmpty) {
+          _showErrorDialog('Phone number is required.');
+          return;
         }
+        if (_visitType == 'staff') {
+          if (_hostNameController.text.trim().isEmpty) {
+            _showErrorDialog('Host name is required for staff visits.');
+            return;
+          }
+          if (_hostPhoneController.text.trim().isEmpty) {
+            _showErrorDialog('Host phone number is required for staff visits.');
+            return;
+          }
+        } else if (_visitType == 'office') {
+          if (_officeNameController.text.trim().isEmpty) {
+            _showErrorDialog('Office name is required for office visits.');
+            return;
+          }
+          if (_officePhoneController.text.trim().isEmpty) {
+            _showErrorDialog(
+              'Office phone number is required for office visits.',
+            );
+            return;
+          }
+          if (_officeContactPersonController.text.trim().isEmpty) {
+            _showErrorDialog(
+              'Office contact person is required for office visits.',
+            );
+            return;
+          }
+        }
+        if (!['staff', 'office'].contains(_visitType)) {
+          _showErrorDialog('Invalid visit type selected.');
+          return;
+        }
+      }
+
+      if (_currentStep == 2) {
+        if (_authToken == null || gateId == null) {
+          await _loadTokenFromPreferences();
+          if (_authToken == null || gateId == null) {
+            _showErrorDialog(
+              'No authentication token or gate ID found. Please log in again.',
+            );
+            if (mounted) {
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/login',
+                (route) => false,
+              );
+            }
+            return;
+          }
+        }
+        final visitorProvider = Provider.of<VisitorProvider>(
+          context,
+          listen: false,
+        );
+        if (visitorProvider.destinations.isEmpty) {
+          await visitorProvider.loadDestinations();
+          if (visitorProvider.destinations.isEmpty) {
+            _showErrorDialog(
+              'No destinations available. Please contact the administrator.',
+            );
+            return;
+          }
+        }
+        if (_selectedVisitorTagId == null) {
+          await _fetchAvailableTags();
+          if (_availableTags.isEmpty) {
+            _showErrorDialog(
+              'No unassigned visitor tags available. Please contact the administrator.',
+            );
+            return;
+          }
+          if (mounted) {
+            setState(
+              () =>
+                  _selectedVisitorTagId = _availableTags.first['id'].toString(),
+            );
+          }
+        }
+        if (_selectedDestinationId == null) {
+          _showErrorDialog('Please select a valid destination.');
+          return;
+        }
+        if (_selectedGate == null ||
+            _selectedGate != visitorProvider.gateId?.toString()) {
+          _showErrorDialog(
+            'Invalid or missing gate selection. Please select the correct gate.',
+          );
+          return;
+        }
+
+        final response = await visitorProvider.checkExistingVisitor(
+          _idNumberController.text.trim(),
+          _selectedIdType,
+        );
+        if (mounted) {
+          setState(() => _isLoading = true);
+        }
+        try {
+          if (response != null &&
+              (response['exists'] == true || response['exists'] == 'true') &&
+              response['visitor'] != null) {
+            final existingVisitor = response['visitor'] as Map<String, dynamic>;
+            final visitorStatus =
+                response['visitorStatus']?.toString() ?? 'unknown';
+            debugPrint(
+              'Final check before registration: visitorStatus=$visitorStatus, alreadyCheckedIn=${response['alreadyCheckedIn']}, status=${existingVisitor['status']}',
+            );
+            if (visitorStatus == 'active') {
+              _showErrorDialog(
+                'Visitor is currently active. Cannot register a new visit until checked out.',
+              );
+              if (mounted) {
+                setState(() => _isLoading = false);
+              }
+              return;
+            }
+
+            // Create a new visit for the existing visitor
+            final visit = {
+              'visitor_id': existingVisitor['id'],
+              'visit_type': _visitType,
+              'visitor_destination_id': int.tryParse(_selectedDestinationId!),
+              'visitor_tag_id': int.tryParse(_selectedVisitorTagId!),
+              'gate_id': int.tryParse(_selectedGate!),
+              'floor_id':
+                  _selectedFloorId != null
+                      ? int.tryParse(_selectedFloorId!)
+                      : null,
+              'had_appointment':
+                  _appointmentController.text.isNotEmpty
+                      ? _appointmentController.text.trim()
+                      : null,
+              'vehicle_type':
+                  _vehicleTypeController.text.isNotEmpty
+                      ? _vehicleTypeController.text
+                      : null,
+              'vehicle_registration':
+                  _vehicleRegController.text.isNotEmpty
+                      ? _vehicleRegController.text.trim()
+                      : null,
+              if (_visitType == 'staff') ...{
+                'host': _hostNameController.text.trim(),
+                'host_phone':
+                    _phoneCountryCode + _hostPhoneController.text.trim(),
+                'host_email':
+                    _hostEmailController.text.isNotEmpty
+                        ? _hostEmailController.text.trim()
+                        : null,
+                'host_department':
+                    _hostDepartmentController.text.isNotEmpty
+                        ? _hostDepartmentController.text.trim()
+                        : null,
+                'host_position':
+                    _hostPositionController.text.isNotEmpty
+                        ? _hostPositionController.text.trim()
+                        : null,
+              },
+              if (_visitType == 'office') ...{
+                'office_name': _officeNameController.text.trim(),
+                'office_phone':
+                    _phoneCountryCode + _officePhoneController.text.trim(),
+                'office_email':
+                    _officeEmailController.text.isNotEmpty
+                        ? _officeEmailController.text.trim()
+                        : null,
+                'office_department':
+                    _officeDepartmentController.text.isNotEmpty
+                        ? _officeDepartmentController.text.trim()
+                        : null,
+                'office_contact_person':
+                    _officeContactPersonController.text.trim(),
+              },
+            };
+
+            debugPrint(
+              '📤 Preparing to create visit for existing visitor with payload: ${jsonEncode(visit)}',
+            );
+            await visitorProvider.createVisitForExistingVisitor(visit);
+
+            if (mounted) {
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Visit created successfully for existing visitor!',
+                    style: GoogleFonts.afacad(),
+                  ),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              );
+              Navigator.of(context).pop();
+            }
+          } else {
+            // Register new visitor
+            final visitor = Visitor(
+              identificationType: _selectedIdType,
+              identificationNumber: _idNumberController.text.trim(),
+              name: _nameController.text.trim(),
+              phoneNumber: _phoneCountryCode + _phoneController.text.trim(),
+              guardianPhone:
+                  _isMinor
+                      ? _phoneCountryCode + _guardianPhoneController.text.trim()
+                      : null,
+              visitType: _visitType,
+              host:
+                  _visitType == 'staff'
+                      ? {
+                        'name': _hostNameController.text.trim(),
+                        'phone':
+                            _phoneCountryCode +
+                            _hostPhoneController.text.trim(),
+                        'email':
+                            _hostEmailController.text.isNotEmpty
+                                ? _hostEmailController.text.trim()
+                                : '',
+                        'department':
+                            _hostDepartmentController.text.isNotEmpty
+                                ? _hostDepartmentController.text.trim()
+                                : '',
+                        'position':
+                            _hostPositionController.text.isNotEmpty
+                                ? _hostPositionController.text.trim()
+                                : '',
+                        'id': '',
+                        'createdAt': DateTime.now().toIso8601String(),
+                      }
+                      : null,
+              officeName:
+                  _visitType == 'office'
+                      ? _officeNameController.text.trim()
+                      : null,
+              officePhone:
+                  _visitType == 'office'
+                      ? _phoneCountryCode + _officePhoneController.text.trim()
+                      : null,
+              officeEmail:
+                  _visitType == 'office' &&
+                          _officeEmailController.text.isNotEmpty
+                      ? _officeEmailController.text.trim()
+                      : null,
+              officeDepartment:
+                  _visitType == 'office' &&
+                          _officeDepartmentController.text.isNotEmpty
+                      ? _officeDepartmentController.text.trim()
+                      : null,
+              officeContactPerson:
+                  _visitType == 'office'
+                      ? _officeContactPersonController.text.trim()
+                      : null,
+              hadAppointment:
+                  _appointmentController.text.isNotEmpty
+                      ? _appointmentController.text.trim()
+                      : null,
+              vehicleType:
+                  _vehicleTypeController.text.isNotEmpty
+                      ? _vehicleTypeController.text
+                      : null,
+              vehicleRegistration:
+                  _vehicleRegController.text.isNotEmpty
+                      ? _vehicleRegController.text.trim()
+                      : null,
+              destinationId:
+                  _selectedDestinationId != null
+                      ? int.tryParse(_selectedDestinationId!)
+                      : null,
+              visitorTagId:
+                  _selectedVisitorTagId != null
+                      ? int.tryParse(_selectedVisitorTagId!)
+                      : null,
+              gateId:
+                  _selectedGate != null ? int.tryParse(_selectedGate!) : null,
+              id: 0,
+              isMinor: _isMinor,
+              phoneCountryCode: _phoneCountryCode,
+              country: _countryController.text.trim(),
+              floorId:
+                  _selectedFloorId != null
+                      ? int.tryParse(_selectedFloorId!)
+                      : null,
+              gender: _selectedGender,
+            );
+
+            debugPrint(
+              '📤 Preparing to register visitor with payload: ${jsonEncode(visitor.toMap())}',
+            );
+            debugPrint(
+              '📤 Token used for registration: ${_authToken!.substring(0, 10)}...',
+            );
+            debugPrint(
+              '📤 Gate ID: $gateId, Visitor Tag ID: $_selectedVisitorTagId',
+            );
+
+            await visitorProvider.registerVisitor(visitor);
+
+            if (mounted) {
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Visitor registered successfully!',
+                    style: GoogleFonts.afacad(),
+                  ),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              );
+              Navigator.of(context).pop();
+            }
+          }
+        } catch (e) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            debugPrint('Registration error: $e, Type: ${e.runtimeType}');
+            if (e.toString().contains('401')) {
+              _showErrorDialog('Session expired. Please log in again.');
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/login',
+                (route) => false,
+              );
+            } else if (e.toString().contains('422')) {
+              String errorMessage;
+              try {
+                final errorBody = jsonDecode(e.toString().split(' - ').last);
+                errorMessage =
+                    errorBody['message'] ?? 'Validation error occurred';
+              } catch (_) {
+                errorMessage =
+                    'Validation error: ${e.toString().split(':').last.trim()}';
+              }
+              if (errorMessage.contains('visitor tag is already assigned')) {
+                await _fetchAvailableTags();
+                if (_availableTags.isEmpty) {
+                  _showErrorDialog(
+                    'No unassigned visitor tags available. Please contact the administrator.',
+                  );
+                } else {
+                  if (mounted) {
+                    setState(
+                      () =>
+                          _selectedVisitorTagId =
+                              _availableTags.first['id'].toString(),
+                    );
+                    _showErrorDialog(
+                      'Visitor tag is already assigned. A new tag has been selected. Please try again.',
+                    );
+                  }
+                }
+              } else if (errorMessage.contains('visitor_destination_id')) {
+                _showErrorDialog(
+                  'Invalid destination selected. Please try again.',
+                );
+                await visitorProvider.loadDestinations();
+              } else {
+                _showErrorDialog(errorMessage);
+              }
+            } else if (e.toString().contains('500')) {
+              _showErrorDialog(
+                'Server error occurred. Please contact the administrator.',
+              );
+            } else {
+              _showErrorDialog('Registration failed: $e');
+            }
+          }
+        }
+        return;
+      }
+
+      if (mounted) {
+        setState(() => _currentStep += 1);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
-    final canRegister = visitorProvider.gateId != null &&
+    final visitorProvider = Provider.of<VisitorProvider>(context);
+    final canRegister =
+        visitorProvider.gateId != null &&
         visitorProvider.deviceGate != null &&
-        visitorProvider.visitorTags.any((tag) =>
-            tag['visitor_gate_id']?.toString() ==
-                visitorProvider.gateId?.toString() &&
-            (tag['is_assigned'] == false ||
-                tag['is_assigned'].toString() == 'false'));
+        visitorProvider.visitorTags.any(
+          (tag) =>
+              tag['visitor_gate_id']?.toString() ==
+                  visitorProvider.gateId?.toString() &&
+              tag['is_assigned'] == false,
+        );
+
+    final steps = [
+      _buildIdentificationStep(),
+      _buildPersonalDetailsStep(),
+      _buildEntryDetailsStep(),
+    ];
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -910,154 +2175,171 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
         onBack: _handleBack,
       ),
       body: SafeArea(
-        child: canRegister
-            ? Stepper(
-                currentStep: _currentStep,
-                onStepContinue: _handleNext,
-                onStepCancel: _handleBack,
-                controlsBuilder: (context, details) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 16.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        if (_currentStep > 0)
-                          OutlinedButton(
-                            onPressed: details.onStepCancel,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.primaryBlue,
-                              side: BorderSide(color: AppColors.primaryBlue),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
+        child:
+            _isLoading || _isRefreshing
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                    onRefresh: _refreshData,
+                    child:
+                        canRegister
+                            ? Column(
+                                children: [
+                                  IconStepper(
+                                    icons: const [
+                                      Icon(
+                                        Icons.credit_card,
+                                        color: Colors.white,
+                                      ),
+                                      Icon(Icons.person, color: Colors.white),
+                                      Icon(Icons.directions, color: Colors.white),
+                                    ],
+                                    activeStep: _currentStep,
+                                    stepColor: Colors.grey.shade300,
+                                    activeStepColor: AppColors.primaryBlue,
+                                    activeStepBorderColor: AppColors.primaryBlue,
+                                    lineColor: Colors.grey.shade400,
+                                    lineLength: 60,
+                                    onStepReached: (index) {
+                                      if (mounted) {
+                                        setState(() => _currentStep = index);
+                                      }
+                                    },
+                                  ),
+                                  Expanded(
+                                    child: SingleChildScrollView(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16.0),
+                                        child: steps[_currentStep],
+                                      ),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        if (_currentStep > 0)
+                                          OutlinedButton(
+                                            onPressed:
+                                                _isLoading || _isScanning
+                                                    ? null
+                                                    : _handleBack,
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor:
+                                                  AppColors.primaryBlue,
+                                              side: const BorderSide(
+                                                color: AppColors.primaryBlue,
+                                              ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 24,
+                                                vertical: 12,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              'BACK',
+                                              style: GoogleFonts.afacad(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ),
+                                        ElevatedButton(
+                                          onPressed:
+                                              _isLoading || _isScanning
+                                                  ? null
+                                                  : _handleNext,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                AppColors.primaryBlue,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(
+                                                8,
+                                              ),
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 24,
+                                              vertical: 12,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            _currentStep == 2
+                                                ? (_isLoading
+                                                    ? 'REGISTERING...'
+                                                    : 'REGISTER')
+                                                : 'NEXT',
+                                            style: GoogleFonts.afacad(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                      Icons.error_outline,
+                                      size: 64,
+                                      color: AppColors.error,
+                                    ),
+                                    const SizedBox(height: 20),
+                                    Text(
+                                      'Registration Unavailable',
+                                      style: GoogleFonts.afacad(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.error,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 40,
+                                      ),
+                                      child: Text(
+                                        'No unassigned visitor tags or gate assignment available. Please contact the administrator.',
+                                        style: GoogleFonts.afacad(
+                                          color: Colors.grey.shade600,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 24),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primaryBlue,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 32,
+                                          vertical: 12,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'RETURN HOME',
+                                        style: GoogleFonts.afacad(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 12),
-                            ),
-                            child: Text(
-                              'BACK',
-                              style: GoogleFonts.lexend(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ElevatedButton(
-                          onPressed: _isLoading ? null : details.onStepContinue,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primaryBlue,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 24, vertical: 12),
-                          ),
-                          child: Text(
-                            _currentStep == 2
-                                ? (_isLoading ? 'REGISTERING...' : 'REGISTER')
-                                : 'NEXT',
-                            style: GoogleFonts.lexend(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-                steps: [
-                  Step(
-                    title: Text(
-                      'Identification',
-                      style: GoogleFonts.lexend(
-                        fontWeight: FontWeight.w500,
-                        color: _currentStep == 0
-                            ? AppColors.primaryBlue
-                            : Colors.grey,
-                      ),
-                    ),
-                    content: _buildIdentificationStep(),
-                    isActive: _currentStep == 0,
-                    state: _currentStep > 0 ? StepState.complete : StepState.indexed,
                   ),
-                  Step(
-                    title: Text(
-                      'Personal Details',
-                      style: GoogleFonts.lexend(
-                        fontWeight: FontWeight.w500,
-                        color: _currentStep == 1
-                            ? AppColors.primaryBlue
-                            : Colors.grey,
-                      ),
-                    ),
-                    content: _buildPersonalDetailsStep(),
-                    isActive: _currentStep == 1,
-                    state: _currentStep > 1 ? StepState.complete : StepState.indexed,
-                  ),
-                  Step(
-                    title: Text(
-                      'Entry Details',
-                      style: GoogleFonts.lexend(
-                        fontWeight: FontWeight.w500,
-                        color: _currentStep == 2
-                            ? AppColors.primaryBlue
-                            : Colors.grey,
-                      ),
-                    ),
-                    content: _buildEntryDetailsStep(),
-                    isActive: _currentStep == 2,
-                    state: StepState.indexed,
-                  ),
-                ],
-              )
-            : Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.error_outline, size: 64, color: AppColors.error),
-                    SizedBox(height: 20),
-                    Text(
-                      'Registration Unavailable',
-                      style: GoogleFonts.lexend(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.error,
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 40),
-                      child: Text(
-                        'No unassigned visitor tags or gate assignment available. Please contact the administrator.',
-                        style: GoogleFonts.lexend(
-                          color: Colors.grey.shade600,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryBlue,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 32, vertical: 12),
-                      ),
-                      child: Text(
-                        'RETURN HOME',
-                        style: GoogleFonts.lexend(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
       ),
     );
   }

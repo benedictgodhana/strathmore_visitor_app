@@ -119,12 +119,12 @@ class _SplashScreenState extends State<SplashScreen>
           (context) => AlertDialog(
             title: Text(
               'Initialization Error',
-              style: GoogleFonts.lexend(fontWeight: FontWeight.w600),
+              style: GoogleFonts.afacad(fontWeight: FontWeight.w600),
             ),
             content: Text(
               _errorMessage ??
                   'An error occurred while loading the app. Please try again.',
-              style: GoogleFonts.lexend(),
+              style: GoogleFonts.afacad(),
             ),
             actions: [
               TextButton(
@@ -134,7 +134,7 @@ class _SplashScreenState extends State<SplashScreen>
                 },
                 child: Text(
                   'Go to Login',
-                  style: GoogleFonts.lexend(color: AppColors.primaryBlue),
+                  style: GoogleFonts.afacad(color: AppColors.primaryBlue),
                 ),
               ),
             ],
@@ -218,7 +218,7 @@ class _SplashScreenState extends State<SplashScreen>
                     Text(
                       AppStrings.universityName,
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.lexend(
+                      style: GoogleFonts.afacad(
                         color: Colors.white,
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
@@ -236,7 +236,7 @@ class _SplashScreenState extends State<SplashScreen>
                     Text(
                       'Visitor Management System',
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.lexend(
+                      style: GoogleFonts.afacad(
                         color: Colors.white.withOpacity(0.9),
                         fontSize: 18,
                         fontWeight: FontWeight.w400,
@@ -264,7 +264,7 @@ class _SplashScreenState extends State<SplashScreen>
                     SizedBox(height: 20),
                     Text(
                       'Loading...',
-                      style: GoogleFonts.lexend(
+                      style: GoogleFonts.afacad(
                         color: Colors.white.withOpacity(0.7),
                         fontSize: 14,
                         fontWeight: FontWeight.w300,

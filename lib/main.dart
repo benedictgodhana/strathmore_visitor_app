@@ -1,12 +1,15 @@
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:strathmore_visitor_app/screens/check_out_screen.dart';
 import 'package:strathmore_visitor_app/screens/forget_screen.dart';
 import 'package:strathmore_visitor_app/screens/lost_id_verification_screen.dart';
+import 'package:strathmore_visitor_app/screens/settings_screen.dart';
 import 'package:strathmore_visitor_app/screens/splash_screen.dart';
 import 'package:strathmore_visitor_app/screens/login_screen.dart';
 import 'package:strathmore_visitor_app/screens/home_screen.dart';
@@ -28,60 +31,87 @@ class MyHttpOverrides extends HttpOverrides {
   }
 }
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   HttpOverrides.global = MyHttpOverrides(); // Set override globally
-  runApp(StrathmoreBMS());
+
+  // Load preferences
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString('token')?.isNotEmpty == true ? prefs.getString('token') : null;
+  final gateId = prefs.getString('gate_id')?.isNotEmpty == true ? prefs.getString('gate_id') : null;
+  final deviceGate = prefs.getString('device_gate')?.isNotEmpty == true ? prefs.getString('device_gate') : null;
+
+  // Determine initial route based on token presence
+  final initialRoute = (token != null && gateId != null && deviceGate != null) ? '/home' : '/';
+
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => VisitorProvider()
+            ..init(
+              token ?? '',
+              gateId ?? '',
+              deviceGate ?? '',
+            ),
+        ),
+      ],
+      child: StrathmoreBMS(initialRoute: initialRoute),
+    ),
+  );
 }
 
 class StrathmoreBMS extends StatelessWidget {
+  final String initialRoute;
+
+  StrathmoreBMS({required this.initialRoute});
+
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [ChangeNotifierProvider(create: (_) => VisitorProvider())],
-      child: MaterialApp(
-        title: 'Strathmore Visitor Management',
-        theme: ThemeData(
-          primarySwatch: Colors.blue,
-          primaryColor: AppColors.primaryBlue,
-          visualDensity: VisualDensity.adaptivePlatformDensity,
-          textTheme: GoogleFonts.lexendTextTheme(
-            Theme.of(context).textTheme.copyWith(
-              titleLarge: GoogleFonts.lexend(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryBlue,
+    return MaterialApp(
+      title: 'Strathmore Visitor Management',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        primaryColor: AppColors.primaryBlue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+        textTheme: GoogleFonts.lexendTextTheme(
+          Theme.of(context).textTheme.copyWith(
+                titleLarge: GoogleFonts.lexend(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryBlue,
+                ),
+                bodyLarge: GoogleFonts.lexend(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w400,
+                  color: Colors.grey.shade800,
+                ),
+                bodyMedium: GoogleFonts.lexend(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                  color: Colors.grey.shade600,
+                ),
+                labelLarge: GoogleFonts.lexend(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
-              bodyLarge: GoogleFonts.lexend(
-                fontSize: 16,
-                fontWeight: FontWeight.w400,
-                color: Colors.grey.shade800,
-              ),
-              bodyMedium: GoogleFonts.lexend(
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
-                color: Colors.grey.shade600,
-              ),
-              labelLarge: GoogleFonts.lexend(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ),
         ),
-        initialRoute: '/',
-        routes: {
-          '/': (context) => SplashScreen(),
-          '/login': (context) => LoginScreen(),
-          '/home': (context) => HomeScreen(),
-          '/visitor-registration': (context) => VisitorRegistrationScreen(),
-          '/admin': (context) => AdminDashboard(),
-          '/lost-id-verification': (context) => IdentityVerificationScreen(),
-          '/check-out': (context) => CheckOutScreen(),
-          '/forgot-password': (context) => ForgotPasswordScreen(),
-          '/visitor-list': (context) => VisitorListScreen(),
-        },
       ),
+      initialRoute: initialRoute,
+      routes: {
+        '/': (context) => SplashScreen(),
+        '/login': (context) => LoginScreen(),
+        '/home': (context) => HomeScreen(),
+        '/visitor-registration': (context) => VisitorRegistrationScreen(),
+        '/admin': (context) => AdminDashboard(),
+        '/lost-id-verification': (context) => IdentityVerificationScreen(),
+        '/check-out': (context) => CheckOutScreen(),
+        '/forgot-password': (context) => ForgotPasswordScreen(),
+        '/visitor-list': (context) => VisitorListScreen(),
+        '/settings': (context) => SettingsScreen(),
+      },
     );
   }
 }

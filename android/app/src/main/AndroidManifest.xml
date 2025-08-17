@@ -2,7 +2,7 @@
 
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <application
-        android:label="strathmore_visitor_app"
+        android:label="StrathCheck"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
