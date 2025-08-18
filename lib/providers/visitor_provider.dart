@@ -359,99 +359,103 @@ class VisitorProvider extends ChangeNotifier {
   }
 
   Future<void> createVisitForExistingVisitor(Map<String, dynamic> visit) async {
-  if (_isDisposed) return;
+    if (_isDisposed) return;
 
-  final token = await _getTokenFromPreferences();
-  final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
-  if (token == null || gateId == null) {
-    debugPrint('⚠️ Cannot create visit: No authentication token or gate ID found');
-    throw VisitorAuthException('No authentication token or gate ID found');
-  }
-
-  _token = token;
-  _gateId = gateId;
-
-  try {
-    final isValidToken = await _validateToken();
-    if (!isValidToken) {
-      debugPrint('⚠️ Invalid or expired token');
-      throw VisitorAuthException('Session expired. Please log in again.');
+    final token = await _getTokenFromPreferences();
+    final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
+    if (token == null || gateId == null) {
+      debugPrint('⚠️ Cannot create visit: No authentication token or gate ID found');
+      throw VisitorAuthException('No authentication token or gate ID found');
     }
-  } catch (e) {
-    debugPrint('❌ Token validation error: $e');
-    throw VisitorAuthException('Failed to validate token: $e');
-  }
 
-  try {
-    final payload = {
-      'visitor_id': Visitor.parseInt(visit['visitor_id'], 'visitor_id'),
-      'visit_type': _sanitizeInput(visit['visit_type']),
-      'visitor_destination_id': Visitor.parseInt(visit['visitor_destination_id'], 'visitor_destination_id'),
-      'visitor_tag_id': Visitor.parseInt(visit['visitor_tag_id'], 'visitor_tag_id'),
-      'gate_id': Visitor.parseInt(visit['gate_id'], 'gate_id'),
-      'had_appointment': visit['had_appointment'], // Send as boolean to match server 'nullable|boolean'
-      'appointment_details': _sanitizeInput(visit['appointment_details']),
-      'vehicle_type': _sanitizeInput(visit['vehicle_type']),
-      'vehicle_registration': _sanitizeInput(visit['vehicle_registration']),
-      if (visit['visit_type'] == 'staff') ...{
-        'host': _sanitizeInput(visit['host']),
-        'host_phone': visit['host_phone']?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
-        'host_email': visit['host_email']?.isNotEmpty == true ? _sanitizeInput(visit['host_email']) : null,
-        'host_department': visit['host_department']?.isNotEmpty == true ? _sanitizeInput(visit['host_department']) : null,
-        'host_position': visit['host_position']?.isNotEmpty == true ? _sanitizeInput(visit['host_position']) : null,
-      },
-      if (visit['visit_type'] == 'office') ...{
-        'office_name': _sanitizeInput(visit['office_name']),
-        'office_phone': visit['office_phone']?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
-        'office_email': visit['office_email']?.isNotEmpty == true ? _sanitizeInput(visit['office_email']) : null,
-        'office_department': visit['office_department']?.isNotEmpty == true ? _sanitizeInput(visit['office_department']) : null,
-        'office_contact_person': _sanitizeInput(visit['office_contact_person']),
-      },
-    }..removeWhere((key, value) => value == null || (value is String && value.isEmpty));
+    _token = token;
+    _gateId = gateId;
 
-    debugPrint('📤 Sending payload to /api/visits: ${jsonEncode(payload)}');
-
-    final response = await _retryApiCall(
-      () => http.post(
-        Uri.parse('${AppStrings.apiBaseUrl}/api/visits'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(payload),
-      ),
-    );
-
-    debugPrint('📥 Response status: ${response.statusCode}');
-    debugPrint('📥 Response body: ${response.body}');
-
-    if (response.statusCode == 201) {
-      debugPrint('✅ Visit created successfully for existing visitor');
-    } else {
-      if (response.statusCode == 422) {
-        final errorData = jsonDecode(response.body);
-        final errorMessage = errorData['message']?.toString() ?? errorData['error']?.toString() ?? 'Validation failed';
-        final validationErrors = errorData['details'] != null
-            ? (errorData['details'] as Map<String, dynamic>).entries.map((e) => '${e.key}: ${e.value.join(', ')}').join('; ')
-            : 'No specific error details provided';
-        debugPrint('❌ Validation error: $errorMessage - $validationErrors');
-        throw VisitorValidationException('$errorMessage - $validationErrors');
-      } else if (response.statusCode == 401) {
-        debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
-        throw VisitorAuthException('Authentication failed: Invalid or expired token');
+    try {
+      final isValidToken = await _validateToken();
+      if (!isValidToken) {
+        debugPrint('⚠️ Invalid or expired token');
+        throw VisitorAuthException('Session expired. Please log in again.');
       }
-      debugPrint('❌ API error: ${response.statusCode} - ${response.body}');
-      throw VisitorNetworkException('Failed to create visit: ${response.statusCode} - ${response.body}');
+    } catch (e) {
+      debugPrint('❌ Token validation error: $e');
+      throw VisitorAuthException('Failed to validate token: $e');
     }
-  } catch (e) {
-    debugPrint('❌ Create visit error: $e');
-    rethrow;
-  } finally {
-    _isLoading = false;
-    _safeNotifyListeners();
+
+    try {
+      final payload = {
+        'visitor_id': Visitor.parseInt(visit['visitor_id'], 'visitor_id'),
+        'visitor_destination_id': Visitor.parseInt(visit['visitor_destination_id'], 'visitor_destination_id'),
+        'visitor_tag_id': Visitor.parseInt(visit['visitor_tag_id'], 'visitor_tag_id'),
+        'gate_id': Visitor.parseInt(visit['gate_id'], 'gate_id'),
+        // Include visit details only if they are provided
+        if (visit['visit_type'] != null) ...{
+          'visit_type': _sanitizeInput(visit['visit_type']),
+          if (visit['visit_type'] == 'staff') ...{
+            if (visit['host']?.isNotEmpty == true) 'host': _sanitizeInput(visit['host']),
+            if (visit['host_phone']?.isNotEmpty == true) 'host_phone': _sanitizeInput(visit['host_phone']?.trim().replaceFirst(RegExp(r'^\+254'), '')),
+            if (visit['host_email']?.isNotEmpty == true) 'host_email': _sanitizeInput(visit['host_email']),
+            if (visit['host_department']?.isNotEmpty == true) 'host_department': _sanitizeInput(visit['host_department']),
+            if (visit['host_position']?.isNotEmpty == true) 'host_position': _sanitizeInput(visit['host_position']),
+          },
+          if (visit['visit_type'] == 'office') ...{
+            if (visit['office_name']?.isNotEmpty == true) 'office_name': _sanitizeInput(visit['office_name']),
+            if (visit['office_phone']?.isNotEmpty == true) 'office_phone': _sanitizeInput(visit['office_phone']?.trim().replaceFirst(RegExp(r'^\+254'), '')),
+            if (visit['office_email']?.isNotEmpty == true) 'office_email': _sanitizeInput(visit['office_email']),
+            if (visit['office_department']?.isNotEmpty == true) 'office_department': _sanitizeInput(visit['office_department']),
+            if (visit['office_contact_person']?.isNotEmpty == true) 'office_contact_person': _sanitizeInput(visit['office_contact_person']),
+          },
+          if (visit['had_appointment'] != null) 'had_appointment': visit['had_appointment'],
+          if (visit['appointment_details']?.isNotEmpty == true) 'appointment_details': _sanitizeInput(visit['appointment_details']),
+          if (visit['vehicle_type']?.isNotEmpty == true) 'vehicle_type': _sanitizeInput(visit['vehicle_type']),
+          if (visit['vehicle_registration']?.isNotEmpty == true) 'vehicle_registration': _sanitizeInput(visit['vehicle_registration']),
+        },
+      }..removeWhere((key, value) => value == null || (value is String && value.isEmpty));
+
+      debugPrint('📤 Sending payload to /api/visits: ${jsonEncode(payload)}');
+
+      final response = await _retryApiCall(
+        () => http.post(
+          Uri.parse('${AppStrings.apiBaseUrl}/api/visits'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(payload),
+        ),
+      );
+
+      debugPrint('📥 Response status: ${response.statusCode}');
+      debugPrint('📥 Response body: ${response.body}');
+
+      if (response.statusCode == 201) {
+        debugPrint('✅ Visit created successfully for existing visitor');
+      } else {
+        if (response.statusCode == 422) {
+          final errorData = jsonDecode(response.body);
+          final errorMessage = errorData['message']?.toString() ?? errorData['error']?.toString() ?? 'Validation failed';
+          final validationErrors = errorData['details'] != null
+              ? (errorData['details'] as Map<String, dynamic>).entries.map((e) => '${e.key}: ${e.value.join(', ')}').join('; ')
+              : 'No specific error details provided';
+          debugPrint('❌ Validation error: $errorMessage - $validationErrors');
+          throw VisitorValidationException('$errorMessage - $validationErrors');
+        } else if (response.statusCode == 401) {
+          debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
+          throw VisitorAuthException('Authentication failed: Invalid or expired token');
+        }
+        debugPrint('❌ API error: ${response.statusCode} - ${response.body}');
+        throw VisitorNetworkException('Failed to create visit: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('❌ Create visit error: $e');
+      rethrow;
+    } finally {
+      _isLoading = false;
+      _safeNotifyListeners();
+    }
   }
-}
+
   /// Initializes the provider with authentication data
   Future<void> init(String token, String gateId, String deviceGate) async {
     if (_isDisposed) return;
@@ -898,175 +902,180 @@ class VisitorProvider extends ChangeNotifier {
       _safeNotifyListeners();
     }
   }
+
+  
   Future<void> registerVisitor(Visitor visitor) async {
-  if (_isDisposed) return;
+    if (_isDisposed) return;
 
-  final token = await _getTokenFromPreferences();
-  final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
-  if (token == null || gateId == null) {
-    debugPrint('⚠️ Cannot register visitor: No authentication token or gate ID found');
-    throw VisitorAuthException('No authentication token or gate ID found');
-  }
-
-  _token = token;
-  _gateId = gateId;
-
-  try {
-    final isValidToken = await _validateToken();
-    if (!isValidToken) {
-      debugPrint('⚠️ Invalid or expired token');
-      throw VisitorAuthException('Session expired. Please log in again.');
+    final token = await _getTokenFromPreferences();
+    final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
+    if (token == null || gateId == null) {
+      debugPrint('⚠️ Cannot register visitor: No authentication token or gate ID found');
+      throw VisitorAuthException('No authentication token or gate ID found');
     }
-  } catch (e) {
-    debugPrint('❌ Token validation error: $e');
-    throw VisitorAuthException('Failed to validate token: $e');
-  }
 
-  try {
-    final existingVisitor = await checkExistingVisitor(
-      visitor.identificationNumber ?? '',
-      visitor.identificationType ?? '',
-    );
-    if (existingVisitor != null && existingVisitor['exists'] == true) {
-      debugPrint('⚠️ Visitor with ID ${visitor.identificationNumber} already exists: $existingVisitor');
-      throw VisitorValidationException('Visitor with ID ${visitor.identificationNumber} already exists');
+    _token = token;
+    _gateId = gateId;
+
+    try {
+      final isValidToken = await _validateToken();
+      if (!isValidToken) {
+        debugPrint('⚠️ Invalid or expired token');
+        throw VisitorAuthException('Session expired. Please log in again.');
+      }
+    } catch (e) {
+      debugPrint('❌ Token validation error: $e');
+      throw VisitorAuthException('Failed to validate token: $e');
     }
-  } catch (e) {
-    if (e is! VisitorAuthException) {
-      rethrow;
+
+    int? visitorId;
+    try {
+      final existingVisitor = await checkExistingVisitor(
+        visitor.identificationNumber ?? '',
+        visitor.identificationType ?? '',
+      );
+      if (existingVisitor != null && existingVisitor['exists'] == true) {
+        visitorId = Visitor.parseInt(existingVisitor['id'], 'visitor_id');
+        debugPrint('✅ Existing visitor found: ID $visitorId');
+      }
+    } catch (e) {
+      if (e is! VisitorAuthException) {
+        rethrow;
+      }
+      debugPrint('❌ Error checking existing visitor: $e');
+      throw e;
     }
-    debugPrint('❌ Error checking existing visitor: $e');
-    throw e;
-  }
 
-  _isLoading = true;
-  _safeNotifyListeners();
-
-  int? visitorTagId;
-  try {
-    visitorTagId = await getAvailableVisitorTagId(gateId: gateId);
-    debugPrint('✅ Retrieved available visitor tag ID: $visitorTagId');
-  } catch (e) {
-    debugPrint('❌ Failed to get available tag: $e');
-    throw VisitorValidationException('Unable to register visitor: No available tags: $e');
-  }
-
-  try {
-    final payload = {
-      'name': _sanitizeInput(visitor.name),
-      'phone_number': visitor.phoneNumber?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
-      'phone_country_code': visitor.phoneCountryCode ?? '+254',
-      'is_minor': visitor.isMinor ?? false,
-      'guardian_phone': visitor.isMinor == true && visitor.guardianPhone != null
-          ? visitor.guardianPhone!.trim().replaceFirst(RegExp(r'^\+254'), '')
-          : null,
-      'gender': _sanitizeInput(visitor.gender), // Add gender
-      'visitor_tag_id': Visitor.parseInt(visitorTagId, 'visitor_tag_id'),
-      'destination_id': Visitor.parseInt(visitor.destinationId, 'destination_id'),
-      'identification_type': _sanitizeInput(visitor.identificationType),
-      'identification_number': _sanitizeInput(visitor.identificationNumber),
-      'visitor_gate_id': Visitor.parseInt(visitor.gateId ?? gateId, 'visitor_gate_id'),
-      'had_appointment': visitor.hadAppointment, // Send as boolean to match server 'nullable|boolean'
-      'appointment_details': _sanitizeInput(visitor.appointmentDetails),
-      'vehicle_type': _sanitizeInput(visitor.vehicleType),
-      'vehicle_registration': _sanitizeInput(visitor.vehicleRegistration),
-      'visit_type': visitor.visitType ?? 'staff',
-      'host_type': visitor.hostType,
-      if (visitor.visitType == 'staff' && visitor.host != null) ...{
-        'host': _sanitizeInput(visitor.host!['name']),
-        'host_phone': visitor.host!['phone']?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
-        'host_email': visitor.host!['email']?.isNotEmpty == true ? _sanitizeInput(visitor.host!['email']) : null,
-        'host_department': visitor.host!['department']?.isNotEmpty == true ? _sanitizeInput(visitor.host!['department']) : null,
-        'host_position': visitor.host!['position']?.isNotEmpty == true ? _sanitizeInput(visitor.host!['position']) : null,
-      },
-      if (visitor.visitType == 'office') ...{
-        'office_name': _sanitizeInput(visitor.officeName),
-        'office_phone': visitor.officePhone?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
-        'office_email': visitor.officeEmail?.isNotEmpty == true ? _sanitizeInput(visitor.officeEmail) : null,
-        'office_department': visitor.officeDepartment?.isNotEmpty == true ? _sanitizeInput(visitor.officeDepartment) : null,
-        'office_contact_person': _sanitizeInput(visitor.officeContactPerson),
-      },
-    }..removeWhere((key, value) => value == null || (value is String && value.isEmpty));
-
-    debugPrint('📤 Sending payload to /api/visitors-store: ${jsonEncode(payload)}');
-
-    final response = await _retryApiCall(
-      () => http.post(
-        Uri.parse('${AppStrings.apiBaseUrl}/api/visitors-store'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(payload),
-      ),
-    );
-
-    debugPrint('📥 Response status: ${response.statusCode}');
-    debugPrint('📥 Response body: ${response.body}');
-    final data = jsonDecode(response.body);
-    debugPrint('📝 Raw visitor map: ${jsonEncode(data['visitor'])}');
-
-    if (response.statusCode == 201) {
-      if (data['visitor'] == null) {
-        debugPrint('❌ Invalid response: Missing visitor data');
-        throw VisitorValidationException('Invalid response: Missing visitor data');
-      }
-      final visitorMap = Map<String, dynamic>.from(data['visitor']);
-      debugPrint('📝 Original visitor map: ${jsonEncode(visitorMap)}');
-
-      try {
-        visitorMap['id'] = Visitor.parseInt(visitorMap['id'], 'id') ?? (throw VisitorValidationException('Invalid visitor id: ${visitorMap['id']}'));
-        if (visitorMap['visitor_tag_id'] != null) {
-          visitorMap['visitor_tag_id'] = Visitor.parseInt(visitorMap['visitor_tag_id'], 'visitor_tag_id');
-        }
-        if (visitorMap['destination_id'] != null) {
-          visitorMap['destination_id'] = Visitor.parseInt(visitorMap['destination_id'], 'destination_id');
-        }
-        if (visitorMap['gate_id'] != null) {
-          visitorMap['gate_id'] = Visitor.parseInt(visitorMap['gate_id'], 'gate_id');
-        }
-        if (visitorMap['floor_id'] != null) {
-          visitorMap['floor_id'] = Visitor.parseInt(visitorMap['floor_id'], 'floor_id');
-        }
-        debugPrint('📝 Preprocessed visitor map: ${jsonEncode(visitorMap)}');
-      } catch (e) {
-        debugPrint('❌ Error preprocessing visitor map: $e');
-        throw VisitorValidationException('Failed to preprocess visitor map: $e');
-      }
-
-      try {
-        final newVisitor = Visitor.fromMap(visitorMap);
-        _visitors.add(newVisitor);
-        debugPrint('✅ Visitor registered successfully: ${newVisitor.name}');
-      } catch (e) {
-        debugPrint('❌ Error creating Visitor object: $e');
-        throw VisitorValidationException('Failed to create Visitor object: $e');
-      }
-    } else {
-      if (response.statusCode == 422) {
-        final errorData = jsonDecode(response.body);
-        final errorMessage = errorData['message']?.toString() ?? errorData['error']?.toString() ?? 'Validation failed';
-        final validationErrors = errorData['details'] != null
-            ? (errorData['details'] as Map<String, dynamic>).entries.map((e) => '${e.key}: ${e.value.join(', ')}').join('; ')
-            : 'No specific error details provided';
-        debugPrint('❌ Validation error: $errorMessage - $validationErrors');
-        throw VisitorValidationException('$errorMessage - $validationErrors');
-      } else if (response.statusCode == 401) {
-        debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
-        throw VisitorAuthException('Authentication failed: Invalid or expired token');
-      }
-      debugPrint('❌ API error: ${response.statusCode} - ${response.body}');
-      throw VisitorNetworkException('Failed to register visitor: ${response.statusCode} - ${response.body}');
-    }
-  } catch (e) {
-    debugPrint('❌ Registration error: $e');
-    rethrow;
-  } finally {
-    _isLoading = false;
+    _isLoading = true;
     _safeNotifyListeners();
+
+    int? visitorTagId;
+    try {
+      visitorTagId = await getAvailableVisitorTagId(gateId: gateId);
+      debugPrint('✅ Retrieved available visitor tag ID: $visitorTagId');
+    } catch (e) {
+      debugPrint('❌ Failed to get available tag: $e');
+      throw VisitorValidationException('Unable to register visitor: No available tags: $e');
+    }
+
+    try {
+      final payload = {
+        if (visitorId != null) 'visitor_id': visitorId,
+        if (visitorId == null) ...{
+          'name': _sanitizeInput(visitor.name),
+          'phone_number': visitor.phoneNumber?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
+          'phone_country_code': visitor.phoneCountryCode ?? '+254',
+          'is_minor': visitor.isMinor ?? false,
+          'guardian_phone': visitor.isMinor == true && visitor.guardianPhone != null
+              ? visitor.guardianPhone!.trim().replaceFirst(RegExp(r'^\+254'), '')
+              : null,
+          'identification_type': _sanitizeInput(visitor.identificationType),
+          'identification_number': _sanitizeInput(visitor.identificationNumber),
+          'gender': _sanitizeInput(visitor.gender),
+        },
+        'visitor_tag_id': Visitor.parseInt(visitorTagId, 'visitor_tag_id'),
+        'destination_id': Visitor.parseInt(visitor.destinationId, 'destination_id'),
+        'visitor_gate_id': Visitor.parseInt(visitor.gateId ?? gateId, 'visitor_gate_id'),
+        if (visitor.hadAppointment != null) 'had_appointment': visitor.hadAppointment,
+        if (visitor.appointmentDetails?.isNotEmpty ?? false) 'appointment_details': _sanitizeInput(visitor.appointmentDetails),
+        if (visitor.vehicleType?.isNotEmpty ?? false) 'vehicle_type': _sanitizeInput(visitor.vehicleType),
+        if (visitor.vehicleRegistration?.isNotEmpty ?? false) 'vehicle_registration': _sanitizeInput(visitor.vehicleRegistration),
+        if (visitor.visitType != null) ...{
+          'visit_type': _sanitizeInput(visitor.visitType),
+          if (visitor.visitType == 'staff' && visitor.host != null) ...{
+            'host': _sanitizeInput(visitor.host!['name']),
+            'host_phone': visitor.host!['phone']?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
+            'host_email': visitor.host!['email']?.isNotEmpty == true ? _sanitizeInput(visitor.host!['email']) : null,
+            'host_department': visitor.host!['department']?.isNotEmpty == true ? _sanitizeInput(visitor.host!['department']) : null,
+            'host_position': visitor.host!['position']?.isNotEmpty == true ? _sanitizeInput(visitor.host!['position']) : null,
+          },
+          if (visitor.visitType == 'office') ...{
+            'office_name': _sanitizeInput(visitor.officeName),
+            'office_phone': visitor.officePhone?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
+            'office_email': visitor.officeEmail?.isNotEmpty == true ? _sanitizeInput(visitor.officeEmail) : null,
+            'office_department': visitor.officeDepartment?.isNotEmpty == true ? _sanitizeInput(visitor.officeDepartment) : null,
+            'office_contact_person': _sanitizeInput(visitor.officeContactPerson),
+          },
+        },
+      }..removeWhere((key, value) => value == null || (value is String && value.isEmpty));
+
+      debugPrint('📤 Sending payload to /api/visitors-store: ${jsonEncode(payload)}');
+
+      final response = await _retryApiCall(
+        () => http.post(
+          Uri.parse('${AppStrings.apiBaseUrl}/api/visitors-store'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(payload),
+        ),
+      );
+
+      debugPrint('📥 Response status: ${response.statusCode}');
+      debugPrint('📥 Response body: ${response.body}');
+      final data = jsonDecode(response.body);
+      debugPrint('📝 Raw visitor map: ${jsonEncode(data['visitor'])}');
+
+      if (response.statusCode == 201) {
+        if (data['visitor'] == null) {
+          debugPrint('❌ Invalid response: Missing visitor data');
+          throw VisitorValidationException('Invalid response: Missing visitor data');
+        }
+        final visitorMap = Map<String, dynamic>.from(data['visitor']);
+        debugPrint('📝 Original visitor map: ${jsonEncode(visitorMap)}');
+
+        try {
+          visitorMap['id'] = Visitor.parseInt(visitorMap['id'], 'id') ?? (throw VisitorValidationException('Invalid visitor id: ${visitorMap['id']}'));
+          if (visitorMap['visitor_tag_id'] != null) {
+            visitorMap['visitor_tag_id'] = Visitor.parseInt(visitorMap['visitor_tag_id'], 'visitor_tag_id');
+          }
+          if (visitorMap['destination_id'] != null) {
+            visitorMap['destination_id'] = Visitor.parseInt(visitorMap['destination_id'], 'destination_id');
+          }
+          if (visitorMap['gate_id'] != null) {
+            visitorMap['gate_id'] = Visitor.parseInt(visitorMap['gate_id'], 'gate_id');
+          }
+          debugPrint('📝 Preprocessed visitor map: ${jsonEncode(visitorMap)}');
+        } catch (e) {
+          debugPrint('❌ Error preprocessing visitor map: $e');
+          throw VisitorValidationException('Failed to preprocess visitor map: $e');
+        }
+
+        try {
+          final newVisitor = Visitor.fromMap(visitorMap);
+          _visitors.add(newVisitor);
+          debugPrint('✅ Visitor registered successfully: ${newVisitor.name}');
+        } catch (e) {
+          debugPrint('❌ Error creating Visitor object: $e');
+          throw VisitorValidationException('Failed to create Visitor object: $e');
+        }
+      } else {
+        if (response.statusCode == 422) {
+          final errorData = jsonDecode(response.body);
+          final errorMessage = errorData['message']?.toString() ?? errorData['error']?.toString() ?? 'Validation failed';
+          final validationErrors = errorData['details'] != null
+              ? (errorData['details'] as Map<String, dynamic>).entries.map((e) => '${e.key}: ${e.value.join(', ')}').join('; ')
+              : 'No specific error details provided';
+          debugPrint('❌ Validation error: $errorMessage - $validationErrors');
+          throw VisitorValidationException('$errorMessage - $validationErrors');
+        } else if (response.statusCode == 401) {
+          debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
+          throw VisitorAuthException('Authentication failed: Invalid or expired token');
+        }
+        debugPrint('❌ API error: ${response.statusCode} - ${response.body}');
+        throw VisitorNetworkException('Failed to register visitor: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('❌ Registration error: $e');
+      rethrow;
+    } finally {
+      _isLoading = false;
+      _safeNotifyListeners();
+    }
   }
-}
+
   /// Logs out the current user
   Future<void> logout() async {
     if (_isDisposed) return;

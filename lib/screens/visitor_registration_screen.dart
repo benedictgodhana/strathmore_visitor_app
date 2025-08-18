@@ -87,6 +87,7 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
   bool? _hadAppointment;
   Timer? _debounceTimer;
   double _formProgress = 0.0;
+  bool _showVisitDetails = false; // New state variable for toggling visit details
 
   // Options for dropdowns
   final List<Map<String, String>> _idTypeOptions = [
@@ -164,9 +165,9 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
     if (_selectedDestinationId != null) filledFields++;
     if (_selectedVisitorTagId != null) filledFields++;
     if (_selectedGate != null) filledFields++;
-    if (_hadAppointment != null) filledFields++;
-    if (_visitType == 'staff' && _hostNameController.text.isNotEmpty) filledFields++;
-    else if (_visitType == 'office' && _officeNameController.text.isNotEmpty) filledFields++;
+    if (_hadAppointment != null && _showVisitDetails) filledFields++;
+    if (_showVisitDetails && _visitType == 'staff' && _hostNameController.text.isNotEmpty) filledFields++;
+    else if (_showVisitDetails && _visitType == 'office' && _officeNameController.text.isNotEmpty) filledFields++;
 
     setState(() {
       _formProgress = filledFields / totalFields;
@@ -995,14 +996,13 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                 const SizedBox(height: 24),
                 _buildSectionHeader('Visit Details', Icons.work_outline),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _visitType,
-                  decoration: _buildInputDecoration('Visit Type', Icons.work_outline, solo: true),
-                  items: _visitTypeOptions.map((option) => DropdownMenuItem(value: option['value'], child: Text(option['label']!, style: GoogleFonts.afacad()))).toList(),
+                CheckboxListTile(
+                  value: _showVisitDetails,
                   onChanged: (value) {
-                    if (mounted) {
-                      setState(() {
-                        _visitType = value!;
+                    setState(() {
+                      _showVisitDetails = value ?? false;
+                      if (!_showVisitDetails) {
+                        _visitType = 'staff';
                         _hostNameController.clear();
                         _hostPhoneController.clear();
                         _hostEmailController.clear();
@@ -1015,132 +1015,158 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                         _officeContactPersonController.clear();
                         _hadAppointment = null;
                         _appointmentDetailsController.clear();
-                      });
+                      }
                       _updateFormProgress();
-                    }
+                    });
                   },
-                  validator: (value) => value == null ? 'Please select a visit type' : null,
+                  title: Text('Provide Visit Details', style: GoogleFonts.afacad()),
+                  controlAffinity: ListTileControlAffinity.leading,
                 ),
-                const SizedBox(height: 16),
-              
-                const SizedBox(height: 16),
-                if (_visitType == 'staff') ...[
-                  TextFormField(
-                    controller: _hostNameController,
-                    decoration: _buildInputDecoration('Host Name', Icons.person_outline, isRequired: true, solo: true),
-                    validator: Validators.validateName,
-                    keyboardType: TextInputType.name,
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
+                if (_showVisitDetails) ...[
                   const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _hostPhoneController,
-                    decoration: _buildInputDecoration('Host Phone', Icons.phone_outlined, isRequired: true, solo: true).copyWith(
-                      prefixText: '$_phoneCountryCode ',
-                      prefixStyle: GoogleFonts.afacad(color: Colors.black),
-                    ),
-                    validator: Validators.validatePhoneNumber,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _hostEmailController,
-                    decoration: _buildInputDecoration('Host Email', Icons.email_outlined, isRequired: false, solo: true),
-                    validator: _hostEmailController.text.isNotEmpty ? Validators.validateEmail : null,
-                    keyboardType: TextInputType.emailAddress,
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _hostDepartmentController,
-                    decoration: _buildInputDecoration('Host Department', Icons.business_outlined, isRequired: false, solo: true),
-                    keyboardType: TextInputType.text,
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _hostPositionController,
-                    decoration: _buildInputDecoration('Host Position', Icons.work_outline, isRequired: false, solo: true),
-                    keyboardType: TextInputType.text,
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
-                ],
-                if (_visitType == 'office') ...[
-                  TextFormField(
-                    controller: _officeNameController,
-                    decoration: _buildInputDecoration('Office Name', Icons.business_outlined, solo: true),
-                    validator: Validators.validateRequired,
-                    keyboardType: TextInputType.text,
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _officePhoneController,
-                    decoration: _buildInputDecoration('Office Phone', Icons.phone_outlined, solo: true).copyWith(
-                      prefixText: '$_phoneCountryCode ',
-                      prefixStyle: GoogleFonts.afacad(color: Colors.black),
-                    ),
-                    validator: Validators.validatePhoneNumber,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _officeEmailController,
-                    decoration: _buildInputDecoration('Office Email', Icons.email_outlined, isRequired: false, solo: true),
-                    validator: _officeEmailController.text.isNotEmpty ? Validators.validateEmail : null,
-                    keyboardType: TextInputType.emailAddress,
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _officeDepartmentController,
-                    decoration: _buildInputDecoration('Office Department', Icons.business_outlined, isRequired: false, solo: true),
-                    keyboardType: TextInputType.text,
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _officeContactPersonController,
-                    decoration: _buildInputDecoration('Contact Person', Icons.person_outline, solo: true),
-                    validator: Validators.validateName,
-                    keyboardType: TextInputType.name,
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _hadAppointment == null ? null : (_hadAppointment! ? 'true' : 'false'),
-                  decoration: _buildInputDecoration('Had Appointment', Icons.event_outlined, solo: true),
-                  items: [
-                    DropdownMenuItem(value: 'true', child: Text('Yes', style: GoogleFonts.afacad())),
-                    DropdownMenuItem(value: 'false', child: Text('No', style: GoogleFonts.afacad())),
-                  ],
-                  onChanged: (value) {
-                    if (mounted) {
-                      setState(() {
-                        _hadAppointment = value == 'true';
-                        if (!_hadAppointment!) {
+                  DropdownButtonFormField<String>(
+                    value: _visitType,
+                    decoration: _buildInputDecoration('Visit Type', Icons.work_outline, solo: true, isRequired: false),
+                    items: _visitTypeOptions.map((option) => DropdownMenuItem(value: option['value'], child: Text(option['label']!, style: GoogleFonts.afacad()))).toList(),
+                    onChanged: (value) {
+                      if (mounted) {
+                        setState(() {
+                          _visitType = value!;
+                          _hostNameController.clear();
+                          _hostPhoneController.clear();
+                          _hostEmailController.clear();
+                          _hostDepartmentController.clear();
+                          _hostPositionController.clear();
+                          _officeNameController.clear();
+                          _officePhoneController.clear();
+                          _officeEmailController.clear();
+                          _officeDepartmentController.clear();
+                          _officeContactPersonController.clear();
+                          _hadAppointment = null;
                           _appointmentDetailsController.clear();
-                        }
+                        });
                         _updateFormProgress();
-                      });
-                    }
-                  },
-                  validator: (value) => value == null ? 'Please select whether the visitor had an appointment' : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _appointmentDetailsController,
-                  decoration: _buildInputDecoration('Appointment Details', Icons.event_note_outlined, isRequired: false, solo: true),
-                  keyboardType: TextInputType.text,
-                  maxLines: 2,
-                  enabled: _hadAppointment == true,
-                  onChanged: (value) => _updateFormProgress(),
-                ),
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  if (_visitType == 'staff') ...[
+                    TextFormField(
+                      controller: _hostNameController,
+                      decoration: _buildInputDecoration('Host Name', Icons.person_outline, isRequired: false, solo: true),
+                      validator: _showVisitDetails && _hostNameController.text.isNotEmpty ? Validators.validateName : null,
+                      keyboardType: TextInputType.name,
+                      onChanged: (value) => _updateFormProgress(),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _hostPhoneController,
+                      decoration: _buildInputDecoration('Host Phone', Icons.phone_outlined, isRequired: false, solo: true).copyWith(
+                        prefixText: '$_phoneCountryCode ',
+                        prefixStyle: GoogleFonts.afacad(color: Colors.black),
+                      ),
+                      validator: _showVisitDetails && _hostPhoneController.text.isNotEmpty ? Validators.validatePhoneNumber : null,
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      onChanged: (value) => _updateFormProgress(),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _hostEmailController,
+                      decoration: _buildInputDecoration('Host Email', Icons.email_outlined, isRequired: false, solo: true),
+                      validator: _showVisitDetails && _hostEmailController.text.isNotEmpty ? Validators.validateEmail : null,
+                      keyboardType: TextInputType.emailAddress,
+                      onChanged: (value) => _updateFormProgress(),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _hostDepartmentController,
+                      decoration: _buildInputDecoration('Host Department', Icons.business_outlined, isRequired: false, solo: true),
+                      keyboardType: TextInputType.text,
+                      onChanged: (value) => _updateFormProgress(),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _hostPositionController,
+                      decoration: _buildInputDecoration('Host Position', Icons.work_outline, isRequired: false, solo: true),
+                      keyboardType: TextInputType.text,
+                      onChanged: (value) => _updateFormProgress(),
+                    ),
+                  ],
+                  if (_visitType == 'office') ...[
+                    TextFormField(
+                      controller: _officeNameController,
+                      decoration: _buildInputDecoration('Office Name', Icons.business_outlined, isRequired: false, solo: true),
+                      validator: _showVisitDetails && _officeNameController.text.isNotEmpty ? Validators.validateRequired : null,
+                      keyboardType: TextInputType.text,
+                      onChanged: (value) => _updateFormProgress(),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _officePhoneController,
+                      decoration: _buildInputDecoration('Office Phone', Icons.phone_outlined, isRequired: false, solo: true).copyWith(
+                        prefixText: '$_phoneCountryCode ',
+                        prefixStyle: GoogleFonts.afacad(color: Colors.black),
+                      ),
+                      validator: _showVisitDetails && _officePhoneController.text.isNotEmpty ? Validators.validatePhoneNumber : null,
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      onChanged: (value) => _updateFormProgress(),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _officeEmailController,
+                      decoration: _buildInputDecoration('Office Email', Icons.email_outlined, isRequired: false, solo: true),
+                      validator: _showVisitDetails && _officeEmailController.text.isNotEmpty ? Validators.validateEmail : null,
+                      keyboardType: TextInputType.emailAddress,
+                      onChanged: (value) => _updateFormProgress(),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _officeDepartmentController,
+                      decoration: _buildInputDecoration('Office Department', Icons.business_outlined, isRequired: false, solo: true),
+                      keyboardType: TextInputType.text,
+                      onChanged: (value) => _updateFormProgress(),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _officeContactPersonController,
+                      decoration: _buildInputDecoration('Contact Person', Icons.person_outline, isRequired: false, solo: true),
+                      validator: _showVisitDetails && _officeContactPersonController.text.isNotEmpty ? Validators.validateName : null,
+                      keyboardType: TextInputType.name,
+                      onChanged: (value) => _updateFormProgress(),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _hadAppointment == null ? null : (_hadAppointment! ? 'true' : 'false'),
+                    decoration: _buildInputDecoration('Had Appointment', Icons.event_outlined, isRequired: false, solo: true),
+                    items: [
+                      DropdownMenuItem(value: 'true', child: Text('Yes', style: GoogleFonts.afacad())),
+                      DropdownMenuItem(value: 'false', child: Text('No', style: GoogleFonts.afacad())),
+                    ],
+                    onChanged: (value) {
+                      if (mounted) {
+                        setState(() {
+                          _hadAppointment = value == 'true';
+                          if (!_hadAppointment!) {
+                            _appointmentDetailsController.clear();
+                          }
+                          _updateFormProgress();
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _appointmentDetailsController,
+                    decoration: _buildInputDecoration('Appointment Details', Icons.event_note_outlined, isRequired: false, solo: true),
+                    keyboardType: TextInputType.text,
+                    maxLines: 2,
+                    enabled: _hadAppointment == true,
+                    onChanged: (value) => _updateFormProgress(),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1223,30 +1249,35 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                   },
                   validator: (value) => value == null ? 'Please select a gate' : null,
                 ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
-                  decoration: _buildInputDecoration('Vehicle Type', Icons.directions_car, isRequired: false, solo: true),
-                  items: _vehicleTypeOptions
-                      .map((option) => DropdownMenuItem(value: option['value'], child: Text(option['label']!, style: GoogleFonts.afacad())))
-                      .toList(),
-                  onChanged: (value) {
-                    if (mounted) {
-                      setState(() => _vehicleTypeController.text = value ?? '');
-                      _updateFormProgress();
-                    }
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _vehicleRegController,
-                  decoration: _buildInputDecoration('Vehicle Registration', Icons.directions_car, isRequired: false, solo: true),
-                  validator: (value) => value != null && value.trim().isNotEmpty && !RegExp(r'^[A-Za-z0-9-]+$').hasMatch(value.trim())
-                      ? 'Invalid vehicle registration format'
-                      : null,
-                  keyboardType: TextInputType.text,
-                  onChanged: (value) => _updateFormProgress(),
-                ),
+                if (_showVisitDetails) ...[
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
+                    decoration: _buildInputDecoration('Vehicle Type', Icons.directions_car, isRequired: false, solo: true),
+                    items: _vehicleTypeOptions
+                        .map((option) => DropdownMenuItem(value: option['value'], child: Text(option['label']!, style: GoogleFonts.afacad())))
+                        .toList(),
+                    onChanged: (value) {
+                      if (mounted) {
+                        setState(() => _vehicleTypeController.text = value ?? '');
+                        _updateFormProgress();
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _vehicleRegController,
+                    decoration: _buildInputDecoration('Vehicle Registration', Icons.directions_car, isRequired: false, solo: true),
+                    validator: (value) {
+                      if (_showVisitDetails && value != null && value.isNotEmpty && !RegExp(r'^[A-Za-z0-9-]+$').hasMatch(value.trim())) {
+                        return 'Invalid vehicle registration format';
+                      }
+                      return null;
+                    },
+                    keyboardType: TextInputType.text,
+                    onChanged: (value) => _updateFormProgress(),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1285,31 +1316,37 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
           _showErrorDialog('Phone number is required.');
           return;
         }
-        if (_hadAppointment == null) {
-          _showErrorDialog('Please specify whether the visitor had an appointment.');
-          return;
-        }
-        if (_visitType == 'staff') {
-          if (_hostNameController.text.trim().isEmpty) {
-            _showErrorDialog('Host name is required for staff visits.');
-            return;
-          }
-          if (_hostPhoneController.text.trim().isEmpty) {
-            _showErrorDialog('Host phone number is required for staff visits.');
-            return;
-          }
-        } else if (_visitType == 'office') {
-          if (_officeNameController.text.trim().isEmpty) {
-            _showErrorDialog('Office name is required for office visits.');
-            return;
-          }
-          if (_officePhoneController.text.trim().isEmpty) {
-            _showErrorDialog('Office phone number is required for office visits.');
-            return;
-          }
-          if (_officeContactPersonController.text.trim().isEmpty) {
-            _showErrorDialog('Office contact person is required for office visits.');
-            return;
+        if (_showVisitDetails) {
+          if (_visitType == 'staff') {
+            if (_hostNameController.text.trim().isNotEmpty && Validators.validateName(_hostNameController.text.trim()) != null) {
+              _showErrorDialog('Please enter a valid host name.');
+              return;
+            }
+            if (_hostPhoneController.text.trim().isNotEmpty && Validators.validatePhoneNumber(_hostPhoneController.text.trim()) != null) {
+              _showErrorDialog('Please enter a valid host phone number.');
+              return;
+            }
+            if (_hostEmailController.text.trim().isNotEmpty && Validators.validateEmail(_hostEmailController.text.trim()) != null) {
+              _showErrorDialog('Please enter a valid host email.');
+              return;
+            }
+          } else if (_visitType == 'office') {
+            if (_officeNameController.text.trim().isNotEmpty && Validators.validateRequired(_officeNameController.text.trim()) != null) {
+              _showErrorDialog('Please enter a valid office name.');
+              return;
+            }
+            if (_officePhoneController.text.trim().isNotEmpty && Validators.validatePhoneNumber(_officePhoneController.text.trim()) != null) {
+              _showErrorDialog('Please enter a valid office phone number.');
+              return;
+            }
+            if (_officeEmailController.text.trim().isNotEmpty && Validators.validateEmail(_officeEmailController.text.trim()) != null) {
+              _showErrorDialog('Please enter a valid office email.');
+              return;
+            }
+            if (_officeContactPersonController.text.trim().isNotEmpty && Validators.validateName(_officeContactPersonController.text.trim()) != null) {
+              _showErrorDialog('Please enter a valid office contact person name.');
+              return;
+            }
           }
         }
       } else {
@@ -1405,27 +1442,27 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
 
             final visit = {
               'visitor_id': visitorId,
-              'visit_type': _visitType,
+              'visit_type': _showVisitDetails ? _visitType : null,
               'visitor_destination_id': destinationId,
               'visitor_tag_id': visitorTagId,
               'gate_id': gateIdParsed,
-              'had_appointment': _hadAppointment,
-              'appointment_details': _appointmentDetailsController.text.isNotEmpty ? _appointmentDetailsController.text.trim() : null,
-              'vehicle_type': _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
-              'vehicle_registration': _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
-              if (_visitType == 'staff') ...{
-                'host': _hostNameController.text.trim(),
-                'host_phone': _phoneCountryCode + _hostPhoneController.text.trim(),
+              'had_appointment': _showVisitDetails ? _hadAppointment : null,
+              'appointment_details': _showVisitDetails && _appointmentDetailsController.text.isNotEmpty ? _appointmentDetailsController.text.trim() : null,
+              'vehicle_type': _showVisitDetails && _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
+              'vehicle_registration': _showVisitDetails && _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
+              if (_showVisitDetails && _visitType == 'staff') ...{
+                'host': _hostNameController.text.isNotEmpty ? _hostNameController.text.trim() : null,
+                'host_phone': _hostPhoneController.text.isNotEmpty ? _phoneCountryCode + _hostPhoneController.text.trim() : null,
                 'host_email': _hostEmailController.text.isNotEmpty ? _hostEmailController.text.trim() : null,
                 'host_department': _hostDepartmentController.text.isNotEmpty ? _hostDepartmentController.text.trim() : null,
                 'host_position': _hostPositionController.text.isNotEmpty ? _hostPositionController.text.trim() : null,
               },
-              if (_visitType == 'office') ...{
-                'office_name': _officeNameController.text.trim(),
-                'office_phone': _phoneCountryCode + _officePhoneController.text.trim(),
+              if (_showVisitDetails && _visitType == 'office') ...{
+                'office_name': _officeNameController.text.isNotEmpty ? _officeNameController.text.trim() : null,
+                'office_phone': _officePhoneController.text.isNotEmpty ? _phoneCountryCode + _officePhoneController.text.trim() : null,
                 'office_email': _officeEmailController.text.isNotEmpty ? _officeEmailController.text.trim() : null,
                 'office_department': _officeDepartmentController.text.isNotEmpty ? _officeDepartmentController.text.trim() : null,
-                'office_contact_person': _officeContactPersonController.text.trim(),
+                'office_contact_person': _officeContactPersonController.text.isNotEmpty ? _officeContactPersonController.text.trim() : null,
               },
             };
 
@@ -1455,8 +1492,8 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
               name: _nameController.text.trim(),
               phoneNumber: _phoneCountryCode + _phoneController.text.trim(),
               guardianPhone: _isMinor ? _phoneCountryCode + _guardianPhoneController.text.trim() : null,
-              visitType: _visitType,
-              host: _visitType == 'staff'
+              visitType: _showVisitDetails ? _visitType : null,
+              host: _showVisitDetails && _visitType == 'staff' && _hostNameController.text.isNotEmpty
                   ? {
                       'name': _hostNameController.text.trim(),
                       'phone': _phoneCountryCode + _hostPhoneController.text.trim(),
@@ -1467,15 +1504,15 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                       'createdAt': DateTime.now().toIso8601String(),
                     }
                   : null,
-              officeName: _visitType == 'office' ? _officeNameController.text.trim() : null,
-              officePhone: _visitType == 'office' ? _phoneCountryCode + _officePhoneController.text.trim() : null,
-              officeEmail: _visitType == 'office' && _officeEmailController.text.isNotEmpty ? _officeEmailController.text.trim() : null,
-              officeDepartment: _visitType == 'office' && _officeDepartmentController.text.isNotEmpty ? _officeDepartmentController.text.trim() : null,
-              officeContactPerson: _visitType == 'office' ? _officeContactPersonController.text.trim() : null,
-              hadAppointment: _hadAppointment ?? false,
-              appointmentDetails: _appointmentDetailsController.text.isNotEmpty ? _appointmentDetailsController.text.trim() : null,
-              vehicleType: _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
-              vehicleRegistration: _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
+              officeName: _showVisitDetails && _visitType == 'office' && _officeNameController.text.isNotEmpty ? _officeNameController.text.trim() : null,
+              officePhone: _showVisitDetails && _visitType == 'office' && _officePhoneController.text.isNotEmpty ? _phoneCountryCode + _officePhoneController.text.trim() : null,
+              officeEmail: _showVisitDetails && _visitType == 'office' && _officeEmailController.text.isNotEmpty ? _officeEmailController.text.trim() : null,
+              officeDepartment: _showVisitDetails && _visitType == 'office' && _officeDepartmentController.text.isNotEmpty ? _officeDepartmentController.text.trim() : null,
+              officeContactPerson: _showVisitDetails && _visitType == 'office' && _officeContactPersonController.text.isNotEmpty ? _officeContactPersonController.text.trim() : null,
+              hadAppointment: _showVisitDetails ? _hadAppointment ?? false : null,
+              appointmentDetails: _showVisitDetails && _appointmentDetailsController.text.isNotEmpty ? _appointmentDetailsController.text.trim() : null,
+              vehicleType: _showVisitDetails && _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
+              vehicleRegistration: _showVisitDetails && _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
               destinationId: destinationId,
               visitorTagId: visitorTagId,
               gateId: gateIdParsed,

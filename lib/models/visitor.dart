@@ -14,7 +14,7 @@ class Visitor {
   final String? destination;
   final int? gateId;
   final String? gate;
-  final String visitType;
+  final String? visitType;
   final Map<String, String>? host;
   final String? officeName;
   final String? officePhone;
@@ -26,16 +26,14 @@ class Visitor {
   final String? accompanyingLetter;
   final String? identificationType;
   final String? identificationNumber;
-  final bool? hadAppointment; // Boolean field
-  final String? appointmentDetails; // Added: New field for appointment details
+  final bool? hadAppointment;
+  final String? appointmentDetails;
   final String? vehicleType;
   final String? vehicleRegistration;
   final String? gender;
   final String? remarks;
 
-
-  String get hostType =>
-      visitType.toLowerCase() == 'staff' ? 'staff' : 'office';
+  String get hostType => visitType?.toLowerCase() == 'staff' ? 'staff' : (visitType == null ? 'unknown' : 'office');
 
   Visitor({
     required this.id,
@@ -51,7 +49,7 @@ class Visitor {
     this.destination,
     this.gateId,
     this.gate,
-    required this.visitType,
+    this.visitType,
     this.host,
     this.officeName,
     this.officePhone,
@@ -64,7 +62,7 @@ class Visitor {
     this.identificationType,
     this.identificationNumber,
     this.hadAppointment,
-    this.appointmentDetails, // Added
+    this.appointmentDetails,
     this.vehicleType,
     this.vehicleRegistration,
     this.gender,
@@ -123,13 +121,11 @@ class Visitor {
   factory Visitor.fromMap(Map<String, dynamic> map) {
     print('📥 Creating Visitor from map: ${jsonEncode(map)}');
 
-    final visitType = map['visit_type']?.toString() ??
-        map['host_type']?.toString() ??
-        'staff';
+    final visitType = map['visit_type']?.toString() ?? map['host_type']?.toString();
     print('ℹ️ Determined visitType: $visitType');
 
     Map<String, String>? hostData;
-    if (visitType.toLowerCase() == 'staff') {
+    if (visitType?.toLowerCase() == 'staff') {
       print('ℹ️ Processing host data for staff visit');
       if (map['host'] != null) {
         if (map['host'] is String) {
@@ -170,6 +166,9 @@ class Visitor {
           'position': map['host_position']?.toString() ?? 'N/A',
         };
       }
+    } else if (visitType == null) {
+      // If visitType is null, ensure hostData is null to avoid unnecessary data
+      hostData = null;
     }
 
     final id = parseInt(map['id'], 'id');
@@ -212,16 +211,13 @@ class Visitor {
       gate: map['gate']?.toString() ?? map['visitor_gate_name']?.toString(),
       visitType: visitType,
       host: hostData,
-      officeName:
-          visitType.toLowerCase() == 'office' ? map['office_name']?.toString() : null,
-      officePhone:
-          visitType.toLowerCase() == 'office' ? map['office_phone']?.toString() : null,
-      officeEmail:
-          visitType.toLowerCase() == 'office' ? map['office_email']?.toString() : null,
-      officeDepartment: visitType.toLowerCase() == 'office'
+      officeName: visitType?.toLowerCase() == 'office' ? map['office_name']?.toString() : null,
+      officePhone: visitType?.toLowerCase() == 'office' ? map['office_phone']?.toString() : null,
+      officeEmail: visitType?.toLowerCase() == 'office' ? map['office_email']?.toString() : null,
+      officeDepartment: visitType?.toLowerCase() == 'office'
           ? map['office_department']?.toString()
           : null,
-      officeContactPerson: visitType.toLowerCase() == 'office'
+      officeContactPerson: visitType?.toLowerCase() == 'office'
           ? map['office_contact_person']?.toString()
           : null,
       isMinor: map['is_minor'] == true || map['is_minor'] == 'true',
@@ -245,7 +241,7 @@ class Visitor {
   }
 
   Map<String, dynamic> toMap() {
-    return {
+    final map = {
       'id': id,
       'name': name,
       'phone_number': phoneNumber,
@@ -259,27 +255,36 @@ class Visitor {
       'destination': destination,
       'gate_id': gateId,
       'gate': gate,
-      'visit_type': visitType,
-      'host_type': hostType,
-      'host': host,
-      'office_name': officeName,
-      'office_phone': officePhone,
-      'office_email': officeEmail,
-      'office_department': officeDepartment,
-      'office_contact_person': officeContactPerson,
       'is_minor': isMinor,
       'guardian_phone': guardianPhone,
       'accompanying_letter': accompanyingLetter,
       'identification_type': identificationType,
       'identification_number': identificationNumber,
-      'had_appointment': hadAppointment?.toString(), // Ensure boolean string
-      'appointment_details': appointmentDetails,
-      'vehicle_type': vehicleType,
-      'vehicle_registration': vehicleRegistration,
       'gender': gender,
-    }..removeWhere(
-        (key, value) => value == null || (value is String && value.isEmpty),
-      );
+      'remarks': remarks,
+    };
+
+    // Conditionally include visit details only if they are provided
+    if (visitType != null) {
+      map['visit_type'] = visitType;
+      map['host_type'] = hostType; // Fixed typo: was 'host_type', now consistent with 'visit_type'
+      if (visitType?.toLowerCase() == 'staff' && host != null) {
+        map['host'] = host;
+      }
+      if (visitType?.toLowerCase() == 'office') {
+        if (officeName?.isNotEmpty ?? false) map['office_name'] = officeName;
+        if (officePhone?.isNotEmpty ?? false) map['office_phone'] = officePhone;
+        if (officeEmail?.isNotEmpty ?? false) map['office_email'] = officeEmail;
+        if (officeDepartment?.isNotEmpty ?? false) map['office_department'] = officeDepartment;
+        if (officeContactPerson?.isNotEmpty ?? false) map['office_contact_person'] = officeContactPerson;
+      }
+      if (hadAppointment != null) map['had_appointment'] = hadAppointment.toString();
+      if (appointmentDetails?.isNotEmpty ?? false) map['appointment_details'] = appointmentDetails;
+      if (vehicleType?.isNotEmpty ?? false) map['vehicle_type'] = vehicleType;
+      if (vehicleRegistration?.isNotEmpty ?? false) map['vehicle_registration'] = vehicleRegistration;
+    }
+
+    return map..removeWhere((key, value) => value == null || (value is String && value.isEmpty));
   }
 
   String toJson() => jsonEncode(toMap());
