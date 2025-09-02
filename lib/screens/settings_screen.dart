@@ -76,7 +76,6 @@ class _SettingsScreenState extends State<SettingsScreen>
             'phoneNumber': prefs.getString('userPhone') ?? 'Not available',
             'role': prefs.getString('userRole') ?? 'Not available',
             'position': prefs.getString('userPosition') ?? 'Not available',
-            'gateId': prefs.getString('gate_id') ?? 'Not available',
             'deviceGate': prefs.getString('device_gate') ?? 'Not available',
             'avatarUrl': prefs.getString('userAvatarUrl'),
           };
@@ -521,13 +520,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 icon: Icons.work_outline,
                 isSmallScreen: isSmallScreen,
               ),
-              SizedBox(height: 12),
-              _buildProfileField(
-                label: 'Gate ID',
-                value: _userData?['gateId'] ?? 'Not available',
-                icon: Icons.confirmation_number_outlined,
-                isSmallScreen: isSmallScreen,
-              ),
+             
               SizedBox(height: 12),
               _buildProfileField(
                 label: 'Device Gate',
@@ -712,16 +705,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                               ),
                             ),
                             SizedBox(height: 8),
-                            Text(
-                              'Customize your app preferences.',
-                              style: GoogleFonts.afacad(
-                                fontSize: 14,
-                                color:
-                                    isDarkMode
-                                        ? Color(0xFF94A3B8)
-                                        : Color(0xFF64748B),
-                              ),
-                            ),
+                           
                           ],
                         ),
                       ),

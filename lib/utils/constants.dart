@@ -1,4 +1,8 @@
+/// Shared error message for network failures
 import 'package:flutter/material.dart';
+
+const String kNetworkErrorMessage =
+    'Network error: Unable to connect. Please check your internet or VPN connection.';
 
 class AppColors {
   static const Color primaryBlue = Color(0xFF1565C0);
@@ -24,5 +28,5 @@ class AppStrings {
   static const String universityName = 'Strathmore University';
   static const String welcomeMessage = 'Welcome to Strathmore University';
   static const String apiBaseUrl =
-      'http://192.168.100.3:8000'; // Added API base URL
+      'https://chala.strathmore.edu'; // Added API base URL
 }

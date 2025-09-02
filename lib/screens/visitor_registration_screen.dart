@@ -87,7 +87,7 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
   bool? _hadAppointment;
   Timer? _debounceTimer;
   double _formProgress = 0.0;
-  bool _showVisitDetails = false; // New state variable for toggling visit details
+  bool _showVisitDetails = false; // Controls only staff/office visit details
 
   // Options for dropdowns
   final List<Map<String, String>> _idTypeOptions = [
@@ -153,7 +153,7 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
   }
 
   void _updateFormProgress() {
-    int totalFields = 11;
+    int totalFields = 11; // Adjusted for required fields
     int filledFields = 0;
 
     if (_idNumberController.text.isNotEmpty) filledFields++;
@@ -161,11 +161,11 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
     if (_phoneController.text.isNotEmpty) filledFields++;
     if (_selectedGender != null) filledFields++;
     if (_countryController.text.isNotEmpty) filledFields++;
-    if (_visitType.isNotEmpty) filledFields++;
     if (_selectedDestinationId != null) filledFields++;
     if (_selectedVisitorTagId != null) filledFields++;
     if (_selectedGate != null) filledFields++;
-    if (_hadAppointment != null && _showVisitDetails) filledFields++;
+    // Vehicle fields are optional, so they don't contribute to required fields
+    if (_showVisitDetails && _hadAppointment != null) filledFields++;
     if (_showVisitDetails && _visitType == 'staff' && _hostNameController.text.isNotEmpty) filledFields++;
     else if (_showVisitDetails && _visitType == 'office' && _officeNameController.text.isNotEmpty) filledFields++;
 
@@ -278,7 +278,7 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
               _idValidationError = 'Visitor is currently active at this gate';
               _showExistingVisitorDialog(visitorData, visitorStatus: visitorStatus);
             } else {
-              _idValidationError = null; // Allow proceeding for checked-out visitors
+              _idValidationError = null;
               _showExistingVisitorDialog(visitorData, visitorStatus: visitorStatus);
             }
           } else {
@@ -1249,35 +1249,40 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
                   },
                   validator: (value) => value == null ? 'Please select a gate' : null,
                 ),
-                if (_showVisitDetails) ...[
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
-                    decoration: _buildInputDecoration('Vehicle Type', Icons.directions_car, isRequired: false, solo: true),
-                    items: _vehicleTypeOptions
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
+                  decoration: _buildInputDecoration('Vehicle Type', Icons.directions_car, isRequired: false, solo: true),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('None', style: TextStyle(fontFamily: 'afacad'))),
+                    ..._vehicleTypeOptions
                         .map((option) => DropdownMenuItem(value: option['value'], child: Text(option['label']!, style: GoogleFonts.afacad())))
                         .toList(),
-                    onChanged: (value) {
-                      if (mounted) {
-                        setState(() => _vehicleTypeController.text = value ?? '');
+                  ],
+                  onChanged: (value) {
+                    if (mounted) {
+                      setState(() {
+                        _vehicleTypeController.text = value ?? '';
+                        if (value == null) _vehicleRegController.clear();
                         _updateFormProgress();
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _vehicleRegController,
-                    decoration: _buildInputDecoration('Vehicle Registration', Icons.directions_car, isRequired: false, solo: true),
-                    validator: (value) {
-                      if (_showVisitDetails && value != null && value.isNotEmpty && !RegExp(r'^[A-Za-z0-9-]+$').hasMatch(value.trim())) {
-                        return 'Invalid vehicle registration format';
-                      }
-                      return null;
-                    },
-                    keyboardType: TextInputType.text,
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
-                ],
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _vehicleRegController,
+                  decoration: _buildInputDecoration('Vehicle Registration', Icons.directions_car, isRequired: false, solo: true),
+                  validator: (value) {
+                    if (value != null && value.isNotEmpty && !RegExp(r'^[A-Za-z0-9-]+$').hasMatch(value.trim())) {
+                      return 'Invalid vehicle registration format';
+                    }
+                    return null;
+                  },
+                  keyboardType: TextInputType.text,
+                  onChanged: (value) => _updateFormProgress(),
+                  enabled: _vehicleTypeController.text.isNotEmpty,
+                ),
               ],
             ),
           ),
@@ -1390,6 +1395,12 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
           return;
         }
 
+        // Validate vehicle registration if provided
+        if (_vehicleRegController.text.isNotEmpty && !RegExp(r'^[A-Za-z0-9-]+$').hasMatch(_vehicleRegController.text.trim())) {
+          _showErrorDialog('Invalid vehicle registration format.');
+          return;
+        }
+
         // Check if visitor exists
         final response = await visitorProvider.checkExistingVisitor(_idNumberController.text.trim(), _selectedIdType);
         bool isExistingVisitor = response != null && (response['exists'] == true || response['exists'] == 'true') && response['visitor'] != null;
@@ -1448,8 +1459,8 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
               'gate_id': gateIdParsed,
               'had_appointment': _showVisitDetails ? _hadAppointment : null,
               'appointment_details': _showVisitDetails && _appointmentDetailsController.text.isNotEmpty ? _appointmentDetailsController.text.trim() : null,
-              'vehicle_type': _showVisitDetails && _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
-              'vehicle_registration': _showVisitDetails && _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
+              'vehicle_type': _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
+              'vehicle_registration': _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
               if (_showVisitDetails && _visitType == 'staff') ...{
                 'host': _hostNameController.text.isNotEmpty ? _hostNameController.text.trim() : null,
                 'host_phone': _hostPhoneController.text.isNotEmpty ? _phoneCountryCode + _hostPhoneController.text.trim() : null,
@@ -1511,8 +1522,8 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
               officeContactPerson: _showVisitDetails && _visitType == 'office' && _officeContactPersonController.text.isNotEmpty ? _officeContactPersonController.text.trim() : null,
               hadAppointment: _showVisitDetails ? _hadAppointment ?? false : null,
               appointmentDetails: _showVisitDetails && _appointmentDetailsController.text.isNotEmpty ? _appointmentDetailsController.text.trim() : null,
-              vehicleType: _showVisitDetails && _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
-              vehicleRegistration: _showVisitDetails && _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
+              vehicleType: _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
+              vehicleRegistration: _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
               destinationId: destinationId,
               visitorTagId: visitorTagId,
               gateId: gateIdParsed,

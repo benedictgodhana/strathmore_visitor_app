@@ -28,8 +28,25 @@ android {
     }
 
     buildTypes {
-        release {
+        getByName("release") {
+            // Keep using debug signing until you set up your keystore
             signingConfig = signingConfigs.getByName("debug")
+
+            // Enable shrinking & obfuscation
+            isMinifyEnabled = true
+            isShrinkResources = true
+
+            // Add ProGuard rules to prevent ML Kit classes from being stripped
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+
+        getByName("debug") {
+            // Debug usually doesn’t need minification
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
