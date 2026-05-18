@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../utils/constants.dart';
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -13,6 +12,8 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final int notificationCount;
   final VoidCallback? onLogoutTap;
   final List<Widget>? actions;
+  final VoidCallback? onBack;
+  final bool isDarkMode;
 
   const CustomAppBar({
     Key? key,
@@ -25,7 +26,9 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.showLogout = false,
     this.notificationCount = 0,
     this.onLogoutTap,
-    this.actions, required void Function() onBack, required bool isDarkMode,
+    this.actions,
+    this.onBack,
+    required this.isDarkMode,
   }) : super(key: key);
 
   @override
@@ -35,18 +38,14 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     return AppBar(
       backgroundColor: backgroundColor,
-      elevation: 0, // Flat design to match LoginScreen
-      leading: showBackButton
-          ? IconButton(
-              icon: Icon(Icons.arrow_back, color: color),
-              onPressed: () => Navigator.pop(context),
-            )
-          : null,
+      // elevation removed for flat design
+      leading: null,
       title: Text(
         title,
-        style: GoogleFonts.lexend(
+        style: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w700,
+          fontFamily: 'BrandonGrotesque',
           color: color,
         ),
       ),
@@ -71,8 +70,9 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                     ),
                     child: Text(
                       notificationCount.toString(),
-                      style: GoogleFonts.lexend(
+                      style: TextStyle(
                         fontSize: 10,
+                        fontFamily: 'BrandonGrotesque',
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
                       ),
@@ -105,50 +105,56 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Icon(Icons.notifications_rounded, color: AppColors.primaryBlue),
-                  SizedBox(width: 10),
-                  Text(
-                    'Notifications',
-                    style: GoogleFonts.lexend(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primaryBlue,
-                    ),
-                  ),
-                  Spacer(),
-                  IconButton(
-                    icon: Icon(Icons.close, color: Colors.grey),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
+      builder:
+          (context) => Container(
+            height: MediaQuery.of(context).size.height * 0.7,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
             ),
-            Expanded(
-              child: Center(
-                child: Text(
-                  'No new notifications',
-                  style: GoogleFonts.lexend(
-                    fontSize: 16,
-                    color: Colors.grey[600],
+            child: Column(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.notifications_rounded,
+                        color: AppColors.primaryBlue,
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        'Notifications',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'BrandonGrotesque',
+                          color: AppColors.primaryBlue,
+                        ),
+                      ),
+                      Spacer(),
+                      IconButton(
+                        icon: Icon(Icons.close, color: Colors.grey),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
                   ),
                 ),
-              ),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      'No new notifications',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontFamily: 'BrandonGrotesque',
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
     );
   }
 }

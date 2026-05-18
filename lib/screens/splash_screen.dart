@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../providers/visitor_provider.dart';
 import '../utils/constants.dart';
 import 'package:http/http.dart' as http;
@@ -119,12 +118,17 @@ class _SplashScreenState extends State<SplashScreen>
           (context) => AlertDialog(
             title: Text(
               'Initialization Error',
-              style: GoogleFonts.afacad(fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontFamily: 'BrandonGrotesque',
+              ),
             ),
             content: Text(
               _errorMessage ??
                   'An error occurred while loading the app. Please try again.',
-              style: GoogleFonts.afacad(),
+              style: TextStyle(
+                fontFamily: 'BrandonGrotesque',
+              ),
             ),
             actions: [
               TextButton(
@@ -134,7 +138,10 @@ class _SplashScreenState extends State<SplashScreen>
                 },
                 child: Text(
                   'Go to Login',
-                  style: GoogleFonts.afacad(color: AppColors.primaryBlue),
+                  style: TextStyle(
+                    color: AppColors.primaryBlue,
+                    fontFamily: 'BrandonGrotesque',
+                  ),
                 ),
               ),
             ],
@@ -151,18 +158,10 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.primaryBlue,
+      backgroundColor: Colors.transparent,
       body: Container(
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.primaryBlue,
-              AppColors.primaryBlue.withOpacity(0.8),
-              AppColors.primaryBlue.withOpacity(0.9),
-            ],
-          ),
+          color: Colors.white,
         ),
         child: SafeArea(
           child: Center(
@@ -181,20 +180,6 @@ class _SplashScreenState extends State<SplashScreen>
                         decoration: BoxDecoration(
                           color: Colors.white,
                           shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.3),
-                              blurRadius: 20,
-                              spreadRadius: 5,
-                              offset: Offset(0, 10),
-                            ),
-                            BoxShadow(
-                              color: Colors.white.withOpacity(0.1),
-                              blurRadius: 10,
-                              spreadRadius: -5,
-                              offset: Offset(0, -5),
-                            ),
-                          ],
                         ),
                         child: Padding(
                           padding: EdgeInsets.all(20),
@@ -218,36 +203,24 @@ class _SplashScreenState extends State<SplashScreen>
                     Text(
                       AppStrings.universityName,
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.afacad(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: Colors.black,
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
+                        fontFamily: 'BrandonGrotesque',
                         letterSpacing: 1.2,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withOpacity(0.3),
-                            offset: Offset(2, 2),
-                            blurRadius: 4,
-                          ),
-                        ],
                       ),
                     ),
                     SizedBox(height: 15),
                     Text(
                       'Visitor Management System',
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.afacad(
-                        color: Colors.white.withOpacity(0.9),
+                      style: TextStyle(
+                        color: Colors.black.withOpacity(0.9),
                         fontSize: 18,
                         fontWeight: FontWeight.w400,
+                        fontFamily: 'BrandonGrotesque',
                         letterSpacing: 0.5,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withOpacity(0.2),
-                            offset: Offset(1, 1),
-                            blurRadius: 2,
-                          ),
-                        ],
                       ),
                     ),
                     SizedBox(height: 60),
@@ -257,17 +230,18 @@ class _SplashScreenState extends State<SplashScreen>
                       child: CircularProgressIndicator(
                         strokeWidth: 3,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.white.withOpacity(0.8),
+                          AppColors.primaryBlue,
                         ),
                       ),
                     ),
                     SizedBox(height: 20),
                     Text(
                       'Loading...',
-                      style: GoogleFonts.afacad(
-                        color: Colors.white.withOpacity(0.7),
+                      style: TextStyle(
+                        color: Colors.black.withOpacity(0.7),
                         fontSize: 14,
                         fontWeight: FontWeight.w300,
+                        fontFamily: 'BrandonGrotesque',
                       ),
                     ),
                   ],

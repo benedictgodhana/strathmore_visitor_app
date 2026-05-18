@@ -14,7 +14,6 @@ dependencies:
   # Core functionality
   cupertino_icons: ^1.0.8
   provider: ^6.1.5
-  google_fonts: ^6.2.1
   shared_preferences: ^2.5.3
   http: ^1.2.2
 
@@ -48,6 +47,20 @@ flutter:
 
   assets:
     - assets/images/strathmore_logo.png
+
+  fonts:
+    - family: BrandonGrotesque
+      fonts:
+        - asset: assets/fonts/BrandonGrotesque-Light.otf
+          weight: 300
+        - asset: assets/fonts/BrandonGrotesque-Regular.otf
+          weight: 400
+        - asset: assets/fonts/BrandonGrotesque-Medium.otf
+          weight: 500
+        - asset: assets/fonts/BrandonGrotesque-Bold.otf
+          weight: 700
+        - asset: assets/fonts/BrandonGrotesque-Black.otf
+          weight: 900
 
 flutter_icons:
   android: true

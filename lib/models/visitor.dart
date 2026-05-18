@@ -290,4 +290,6 @@ class Visitor {
   String toJson() => jsonEncode(toMap());
 
   String get status => checkOutTime != null ? 'Checked Out' : 'Checked In';
+
+  get contact => null;
 }

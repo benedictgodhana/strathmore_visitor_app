@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../utils/constants.dart';
 
 class CustomBottomNav extends StatefulWidget {
@@ -202,23 +201,21 @@ class _CustomBottomNavState extends State<CustomBottomNav>
                     ),
                   ),
                   SizedBox(height: isVerySmallScreen ? 0.5 : 1),
-                  AnimatedDefaultTextStyle(
-                    duration: Duration(milliseconds: 300),
-                    style: GoogleFonts.inter(
+                  Text(
+                    label,
+                    style: TextStyle(
                       fontSize: isVerySmallScreen ? 8 : isSmallScreen ? 9 : 10,
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      fontFamily: 'BrandonGrotesque',
                       color: isSelected
                           ? itemColor
                           : (widget.isDarkMode
                               ? Color(0xFF94A3B8)
                               : Color(0xFF64748B)),
                     ),
-                    child: Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   SizedBox(height: isVerySmallScreen ? 0.5 : 1),
                   AnimatedContainer(
@@ -373,10 +370,11 @@ class _CompactCustomBottomNavState extends State<CompactCustomBottomNav>
                             SizedBox(height: isVerySmallScreen ? 0.5 : 1),
                             Text(
                               item.label,
-                              style: GoogleFonts.inter(
+                              style: TextStyle(
                                 fontSize: isVerySmallScreen ? 7 : isSmallScreen ? 8 : 9,
                                 fontWeight:
                                     isSelected ? FontWeight.w600 : FontWeight.w500,
+                                fontFamily: 'BrandonGrotesque',
                                 color: isSelected
                                     ? item.color
                                     : (widget.isDarkMode

@@ -5,8 +5,8 @@ const String kNetworkErrorMessage =
     'Network error: Unable to connect. Please check your internet or VPN connection.';
 
 class AppColors {
-  static const Color primaryBlue = Color(0xFF1565C0);
-  static const Color secondaryBlue = Color(0xFF42A5F5);
+  static const Color primaryBlue = Color(0xFF02338D); // #02338D
+  static const Color secondaryBlue = Color(0xFF02338D); // #CC9C4A
   static const Color success = Color(0xFF4CAF50);
   static const Color warning = Color(0xFFFF9800);
   static const Color error = Color(0xFFF44336);

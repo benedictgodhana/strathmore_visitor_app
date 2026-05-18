@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:confetti/confetti.dart';
@@ -188,8 +187,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                   SizedBox(width: 8),
                   Text(
                     'Confirm Logout',
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontWeight: FontWeight.w700,
+                      fontFamily: 'BrandonGrotesque',
                       color: isDarkMode ? Colors.white : Color(0xFF0F172A),
                     ),
                   ),
@@ -197,8 +197,9 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               content: Text(
                 'Are you sure you want to log out?',
-                style: GoogleFonts.afacad(
+                style: TextStyle(
                   fontSize: 14,
+                  fontFamily: 'BrandonGrotesque',
                   color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
                 ),
               ),
@@ -207,7 +208,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                   onPressed: () => Navigator.of(context).pop(false),
                   child: Text(
                     'Cancel',
-                    style: GoogleFonts.afacad(
+                    style: TextStyle(
+                      fontFamily: 'BrandonGrotesque',
                       color: AppColors.primaryBlue,
                       fontWeight: FontWeight.w600,
                     ),
@@ -220,7 +222,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                   },
                   child: Text(
                     'Logout',
-                    style: GoogleFonts.afacad(
+                    style: TextStyle(
+                      fontFamily: 'BrandonGrotesque',
                       color: AppColors.warning,
                       fontWeight: FontWeight.w600,
                     ),
@@ -310,8 +313,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             Expanded(
               child: Text(
                 message,
-                style: GoogleFonts.afacad(
+                style: TextStyle(
                   fontSize: isSmallScreen ? 13 : 14,
+                  fontFamily: 'BrandonGrotesque',
                   color: color,
                   fontWeight: FontWeight.w500,
                 ),
@@ -363,9 +367,10 @@ class _SettingsScreenState extends State<SettingsScreen>
               Expanded(
                 child: Text(
                   title,
-                  style: GoogleFonts.afacad(
+                  style: TextStyle(
                     fontSize: isSmallScreen ? 14 : 16,
                     fontWeight: FontWeight.w600,
+                    fontFamily: 'BrandonGrotesque',
                     color: isDarkMode ? Colors.white : Color(0xFF0F172A),
                   ),
                 ),
@@ -416,9 +421,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                 SizedBox(width: 8),
                 Text(
                   title,
-                  style: GoogleFonts.afacad(
+                  style: TextStyle(
                     fontSize: isSmallScreen ? 14 : 16,
                     fontWeight: FontWeight.w600,
+                    fontFamily: 'BrandonGrotesque',
                   ),
                 ),
               ],
@@ -457,9 +463,10 @@ class _SettingsScreenState extends State<SettingsScreen>
             children: [
               Text(
                 'User Profile',
-                style: GoogleFonts.poppins(
+                style: TextStyle(
                   fontSize: isSmallScreen ? 16 : 18,
                   fontWeight: FontWeight.w700,
+                  fontFamily: 'BrandonGrotesque',
                   color: isDarkMode ? Colors.white : AppColors.primaryBlue,
                 ),
               ),
@@ -557,17 +564,19 @@ class _SettingsScreenState extends State<SettingsScreen>
               children: [
                 Text(
                   label,
-                  style: GoogleFonts.afacad(
+                  style: TextStyle(
                     fontSize: isSmallScreen ? 12 : 14,
+                    fontFamily: 'BrandonGrotesque',
                     color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 Text(
                   value,
-                  style: GoogleFonts.afacad(
+                  style: TextStyle(
                     fontSize: isSmallScreen ? 14 : 16,
                     fontWeight: FontWeight.w600,
+                    fontFamily: 'BrandonGrotesque',
                     color: isDarkMode ? Colors.white : Color(0xFF0F172A),
                   ),
                 ),
@@ -695,9 +704,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                           children: [
                             Text(
                               'Settings',
-                              style: GoogleFonts.poppins(
+                              style: TextStyle(
                                 fontSize: isSmallScreen ? 24 : 28,
                                 fontWeight: FontWeight.w700,
+                                fontFamily: 'BrandonGrotesque',
                                 color:
                                     isDarkMode
                                         ? Colors.white
@@ -705,7 +715,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                               ),
                             ),
                             SizedBox(height: 8),
-                           
                           ],
                         ),
                       ),
@@ -801,8 +810,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                     SizedBox(width: 8),
                                     Text(
                                       'Secure Access System',
-                                      style: GoogleFonts.afacad(
+                                      style: TextStyle(
                                         fontSize: 12,
+                                        fontFamily: 'BrandonGrotesque',
                                         color:
                                             isDarkMode
                                                 ? Color(0xFF94A3B8)
@@ -816,8 +826,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                               SizedBox(height: 8),
                               Text(
                                 AppStrings.universityName,
-                                style: GoogleFonts.afacad(
+                                style: TextStyle(
                                   fontSize: 12,
+                                  fontFamily: 'BrandonGrotesque',
                                   color:
                                       isDarkMode
                                           ? Color(0xFF94A3B8)

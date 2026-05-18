@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../utils/constants.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -70,17 +69,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
         backgroundColor: Colors.white,
         title: Text(
           'Reset Error',
-          style: GoogleFonts.afacad(
+          style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w700,
+            fontFamily: 'BrandonGrotesque',
             color: AppColors.error,
           ),
         ),
         content: Text(
           message,
-          style: GoogleFonts.afacad(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w400,
+            fontFamily: 'BrandonGrotesque',
             color: Colors.grey.shade600,
           ),
         ),
@@ -89,9 +90,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
             onPressed: () => Navigator.of(context).pop(),
             child: Text(
               'OK',
-              style: GoogleFonts.afacad(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
+                fontFamily: 'BrandonGrotesque',
                 color: AppColors.primaryBlue,
               ),
             ),
@@ -104,9 +106,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
               },
               child: Text(
                 'Retry',
-                style: GoogleFonts.afacad(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
+                  fontFamily: 'BrandonGrotesque',
                   color: AppColors.primaryBlue,
                 ),
               ),
@@ -155,9 +158,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                         SizedBox(height: 16),
                         Text(
                           'RESET PASSWORD',
-                          style: GoogleFonts.afacad(
+                          style: TextStyle(
                             fontSize: isSmallScreen ? 24 : 28,
                             fontWeight: FontWeight.w700,
+                            fontFamily: 'BrandonGrotesque',
                             color: AppColors.primaryBlue,
                           ),
                           textAlign: TextAlign.center,
@@ -165,9 +169,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                         SizedBox(height: 8),
                         Text(
                           'Enter your email to receive a reset link',
-                          style: GoogleFonts.afacad(
+                          style: TextStyle(
                             fontSize: isSmallScreen ? 14 : 16,
                             fontWeight: FontWeight.w500,
+                            fontFamily: 'BrandonGrotesque',
                             color: Colors.grey.shade600,
                           ),
                           textAlign: TextAlign.center,
@@ -177,7 +182,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                           controller: _emailController,
                           decoration: InputDecoration(
                             labelText: 'Email',
-                            labelStyle: GoogleFonts.afacad(
+                            labelStyle: TextStyle(
+                              fontFamily: 'BrandonGrotesque',
                               color: Colors.grey.shade600,
                               fontWeight: FontWeight.w600,
                             ),
@@ -193,6 +199,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                             filled: true,
                             fillColor: Colors.grey.shade50,
                             contentPadding: EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                          ),
+                          style: TextStyle(
+                            fontFamily: 'BrandonGrotesque',
+                            fontSize: 16,
                           ),
                           keyboardType: TextInputType.emailAddress,
                           validator: (value) {
@@ -240,9 +250,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                                     alignment: Alignment.center,
                                     child: Text(
                                       'Send Reset Link',
-                                      style: GoogleFonts.afacad(
+                                      style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w600,
+                                        fontFamily: 'BrandonGrotesque',
                                         color: Colors.white,
                                       ),
                                     ),
@@ -259,9 +270,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                             icon: Icon(Icons.arrow_back, color: AppColors.primaryBlue, size: 18),
                             label: Text(
                               'Back to Login',
-                              style: GoogleFonts.afacad(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
+                                fontFamily: 'BrandonGrotesque',
                                 color: AppColors.primaryBlue,
                               ),
                             ),

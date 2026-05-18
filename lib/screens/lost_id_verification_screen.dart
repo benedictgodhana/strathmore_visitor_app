@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:confetti/confetti.dart';
@@ -85,7 +84,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
         SnackBar(
           content: Text(
             'Failed to load saved data: $e',
-            style: GoogleFonts.afacad(color: Colors.white),
+            style: TextStyle(fontFamily: 'BrandonGrotesque', color: Colors.white),
           ),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
@@ -182,7 +181,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
         SnackBar(
           content: Text(
             'All saved data cleared',
-            style: GoogleFonts.afacad(color: Colors.white),
+            style: TextStyle(fontFamily: 'BrandonGrotesque', color: Colors.white),
           ),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
@@ -197,7 +196,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
         SnackBar(
           content: Text(
             'Failed to clear data: $e',
-            style: GoogleFonts.afacad(color: Colors.white),
+            style: TextStyle(fontFamily: 'BrandonGrotesque', color: Colors.white),
           ),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
@@ -442,9 +441,10 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                           children: [
                             Text(
                               'Verify Identity',
-                              style: GoogleFonts.poppins(
+                              style: TextStyle(
                                 fontSize: isSmallScreen ? 24 : 28,
                                 fontWeight: FontWeight.w700,
+                                fontFamily: 'BrandonGrotesque',
                                 color:
                                     isDarkMode
                                         ? Colors.white
@@ -454,8 +454,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                             SizedBox(height: 8),
                             Text(
                               'Select the verification type and enter the appropriate details.',
-                              style: GoogleFonts.afacad(
+                              style: TextStyle(
                                 fontSize: 14,
+                                fontFamily: 'BrandonGrotesque',
                                 color:
                                     isDarkMode
                                         ? Color(0xFF94A3B8)
@@ -500,8 +501,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                               Center(
                                 child: Text(
                                   'For security use only • ${AppStrings.universityName}',
-                                  style: GoogleFonts.afacad(
+                                  style: TextStyle(
                                     fontSize: 12,
+                                    fontFamily: 'BrandonGrotesque',
                                     color:
                                         isDarkMode
                                             ? Color(0xFF94A3B8)
@@ -554,7 +556,8 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
         value: _verificationType,
         decoration: InputDecoration(
           labelText: 'Verification Type',
-          labelStyle: GoogleFonts.afacad(
+          labelStyle: TextStyle(
+            fontFamily: 'BrandonGrotesque',
             color: AppColors.primaryBlue,
             fontWeight: FontWeight.w600,
           ),
@@ -570,21 +573,30 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             value: 'student',
             child: Text(
               'Student ID',
-              style: GoogleFonts.afacad(fontWeight: FontWeight.w500),
+              style: TextStyle(
+                fontFamily: 'BrandonGrotesque',
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
           DropdownMenuItem(
             value: 'username',
             child: Text(
               'Staff Username',
-              style: GoogleFonts.afacad(fontWeight: FontWeight.w500),
+              style: TextStyle(
+                fontFamily: 'BrandonGrotesque',
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
           DropdownMenuItem(
             value: 'staffNo',
             child: Text(
               'Staff Number',
-              style: GoogleFonts.afacad(fontWeight: FontWeight.w500),
+              style: TextStyle(
+                fontFamily: 'BrandonGrotesque',
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -623,9 +635,10 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                 : _verificationType == 'username'
                 ? 'Staff Username'
                 : 'Staff Number',
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: isSmallScreen ? 16 : 18,
               fontWeight: FontWeight.w700,
+              fontFamily: 'BrandonGrotesque',
               color: isDarkMode ? Colors.white : Color(0xFF0F172A),
             ),
           ),
@@ -648,6 +661,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                       : _verificationType == 'username'
                       ? 'Enter staff username'
                       : 'Enter staff number',
+              hintStyle: TextStyle(fontFamily: 'BrandonGrotesque'),
               prefixIcon: Icon(
                 _verificationType == 'student' ? Icons.badge : Icons.person,
                 color: AppColors.primaryBlue,
@@ -674,6 +688,10 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                 horizontal: 16,
                 vertical: 16,
               ),
+            ),
+            style: TextStyle(
+              fontFamily: 'BrandonGrotesque',
+              fontSize: 16,
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
@@ -725,10 +743,11 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                           )
                           : Text(
                             'Verify ${_verificationType.capitalize()}',
-                            style: GoogleFonts.afacad(
+                            style: TextStyle(
                               color: Colors.white,
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
+                              fontFamily: 'BrandonGrotesque',
                             ),
                           ),
                 ),
@@ -746,10 +765,11 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                   ),
                   child: Text(
                     'Clear',
-                    style: GoogleFonts.afacad(
+                    style: TextStyle(
                       color: Colors.white,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
+                      fontFamily: 'BrandonGrotesque',
                     ),
                   ),
                 ),
@@ -780,7 +800,8 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
           Expanded(
             child: Text(
               _errorMessage!,
-              style: GoogleFonts.afacad(
+              style: TextStyle(
+                fontFamily: 'BrandonGrotesque',
                 color: AppColors.error,
                 fontSize: isSmallScreen ? 13 : 14,
                 fontWeight: FontWeight.w500,
@@ -811,7 +832,8 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
           Expanded(
             child: Text(
               _successMessage!,
-              style: GoogleFonts.afacad(
+              style: TextStyle(
+                fontFamily: 'BrandonGrotesque',
                 color: Colors.green,
                 fontSize: isSmallScreen ? 13 : 14,
                 fontWeight: FontWeight.w600,
@@ -862,9 +884,10 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
               SizedBox(width: 12),
               Text(
                 '${_identityData!['type'].toString().capitalize()} Verified',
-                style: GoogleFonts.poppins(
+                style: TextStyle(
                   fontSize: isSmallScreen ? 18 : 20,
                   fontWeight: FontWeight.w700,
+                  fontFamily: 'BrandonGrotesque',
                   color: isDarkMode ? Colors.white : Color(0xFF0F172A),
                 ),
               ),
@@ -929,10 +952,11 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             ),
             child: Text(
               'Done',
-              style: GoogleFonts.afacad(
+              style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
+                fontFamily: 'BrandonGrotesque',
               ),
             ),
           ),
@@ -951,9 +975,10 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             width: isSmallScreen ? 100 : 120,
             child: Text(
               label,
-              style: GoogleFonts.afacad(
+              style: TextStyle(
                 fontSize: isSmallScreen ? 13 : 14,
                 fontWeight: FontWeight.w600,
+                fontFamily: 'BrandonGrotesque',
                 color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
               ),
             ),
@@ -961,8 +986,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
           Expanded(
             child: Text(
               value,
-              style: GoogleFonts.afacad(
+              style: TextStyle(
                 fontSize: isSmallScreen ? 13 : 14,
+                fontFamily: 'BrandonGrotesque',
                 color: isDarkMode ? Colors.white : Color(0xFF0F172A),
               ),
             ),
@@ -999,9 +1025,10 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             children: [
               Text(
                 'Recent Verifications',
-                style: GoogleFonts.poppins(
+                style: TextStyle(
                   fontSize: isSmallScreen ? 18 : 20,
                   fontWeight: FontWeight.w700,
+                  fontFamily: 'BrandonGrotesque',
                   color: isDarkMode ? Colors.white : Color(0xFF0F172A),
                 ),
               ),
@@ -1009,8 +1036,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                 onPressed: _clearAllSavedData,
                 child: Text(
                   'Clear All',
-                  style: GoogleFonts.afacad(
+                  style: TextStyle(
                     fontSize: isSmallScreen ? 13 : 14,
+                    fontFamily: 'BrandonGrotesque',
                     color: AppColors.error,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1036,8 +1064,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                       Expanded(
                         child: Text(
                           verification['display'],
-                          style: GoogleFonts.afacad(
+                          style: TextStyle(
                             fontSize: isSmallScreen ? 13 : 14,
+                            fontFamily: 'BrandonGrotesque',
                             color:
                                 isDarkMode
                                     ? Color(0xFF94A3B8)

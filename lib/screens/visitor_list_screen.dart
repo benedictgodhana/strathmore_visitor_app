@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:confetti/confetti.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
@@ -23,13 +22,15 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
   late AnimationController _animationController;
   late AnimationController _slideController;
   late AnimationController _dialogAnimationController;
+  late AnimationController _fabAnimationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _scaleAnimation;
+  late Animation<double> _fabAnimation;
   late ConfettiController _confettiController;
-  bool _showFab = true;
   int _currentIndex = 0;
   bool _isDarkMode = false;
+  double _scrollOffset = 0;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String? _deviceGate;
@@ -40,13 +41,13 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
     _scrollController = ScrollController();
     _scrollController.addListener(() {
       setState(() {
-        _showFab = _scrollController.position.pixels <= 100;
+        _scrollOffset = _scrollController.position.pixels;
       });
     });
 
     _initializeAnimations();
     _loadUserPreferences();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 1));
+    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
 
     _searchController.addListener(() {
       setState(() {
@@ -75,6 +76,11 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
       vsync: this,
     );
 
+    _fabAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeOutQuart),
     );
@@ -90,8 +96,13 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
       CurvedAnimation(parent: _dialogAnimationController, curve: Curves.easeOut),
     );
 
+    _fabAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fabAnimationController, curve: Curves.elasticOut),
+    );
+
     _animationController.forward();
     _slideController.forward();
+    _fabAnimationController.forward();
   }
 
   Future<void> _loadUserPreferences() async {
@@ -132,12 +143,12 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
           SnackBar(
             content: Text(
               'Failed to load checked-in visitors: ${e.toString()}',
-              style: GoogleFonts.afacad(color: Colors.white),
+              style: const TextStyle(fontFamily: 'BrandonGrotesque', color: Colors.white),
             ),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.zero,
             ),
           ),
         );
@@ -153,16 +164,17 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
         scale: _scaleAnimation,
         child: AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.zero,
           ),
           backgroundColor: _isDarkMode ? const Color(0xFF1E293B) : Colors.white,
           elevation: 8,
           contentPadding: const EdgeInsets.all(24),
           title: Text(
             'Session Expired',
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
+              fontFamily: 'BrandonGrotesque',
               color: _isDarkMode ? Colors.white : const Color(0xFF0F172A),
             ),
             textAlign: TextAlign.center,
@@ -178,8 +190,9 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
               const SizedBox(height: 16),
               Text(
                 'Your session has expired. Please log in again to continue.',
-                style: GoogleFonts.afacad(
+                style: TextStyle(
                   fontSize: 16,
+                  fontFamily: 'BrandonGrotesque',
                   color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                 ),
                 textAlign: TextAlign.center,
@@ -192,35 +205,46 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
               onPressed: () => Navigator.pop(context),
               child: Text(
                 'Cancel',
-                style: GoogleFonts.afacad(
+                style: TextStyle(
+                  fontFamily: 'BrandonGrotesque',
                   color: _isDarkMode ? Colors.white : const Color(0xFF64748B),
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  '/login',
-                  (route) => false,
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryBlue,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppColors.primaryBlue, AppColors.secondaryBlue],
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
+                borderRadius: BorderRadius.zero,
               ),
-              child: Text(
-                'Log In',
-                style: GoogleFonts.afacad(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/login',
+                    (route) => false,
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Log In',
+                  style: TextStyle(
+                    fontFamily: 'BrandonGrotesque',
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -236,6 +260,7 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
     _animationController.dispose();
     _slideController.dispose();
     _dialogAnimationController.dispose();
+    _fabAnimationController.dispose();
     _confettiController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -255,7 +280,7 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
           }).toList();
 
     return Scaffold(
-      backgroundColor: _isDarkMode ? const Color(0xFF0A0E21) : const Color(0xFFF8FAFF),
+      backgroundColor: _isDarkMode ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       extendBodyBehindAppBar: true,
       appBar: CustomAppBar(
         title: 'Visitor Management',
@@ -287,9 +312,13 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
             tooltip: 'Refresh',
           ),
           IconButton(
-            icon: Icon(
-              _isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-              color: Colors.white,
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: Icon(
+                _isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                key: ValueKey(_isDarkMode),
+                color: Colors.white,
+              ),
             ),
             onPressed: _toggleDarkMode,
           ),
@@ -301,16 +330,17 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
         children: [
           AnimatedContainer(
             duration: const Duration(milliseconds: 500),
-            height: 200,
+            height: 200 + (_scrollOffset * 0.3).clamp(0.0, 80.0),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [AppColors.primaryBlue, AppColors.secondaryBlue],
+                colors: [AppColors.primaryBlue, AppColors.secondaryBlue, const Color(0xFF1E3A8A)],
+                stops: const [0.0, 0.5, 1.0],
               ),
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(30),
-                bottomRight: Radius.circular(30),
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.zero,
+                bottomRight: Radius.zero,
               ),
             ),
           ),
@@ -325,7 +355,10 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                 AppColors.primaryBlue,
                 Colors.amber,
                 Colors.green,
+                Colors.pink,
               ],
+              numberOfParticles: 50,
+              gravity: 0.2,
             ),
           ),
           SafeArea(
@@ -348,30 +381,56 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                         horizontal: isSmallScreen ? 16 : 24,
                         vertical: 16,
                       ),
-                      child: TextField(
-                        controller: _searchController,
-                        decoration: InputDecoration(
-                          hintText: 'Search by name or ID number',
-                          hintStyle: GoogleFonts.afacad(
-                            color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                      child: FadeTransition(
+                        opacity: _fadeAnimation,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: _isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+                            borderRadius: BorderRadius.zero,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(_isDarkMode ? 0.2 : 0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
-                          prefixIcon: Icon(
-                            Icons.search,
-                            color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          child: TextField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              hintText: 'Search by name or ID number',
+                              hintStyle: TextStyle(
+                                fontFamily: 'BrandonGrotesque',
+                                color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                              ),
+                              prefixIcon: Icon(
+                                Icons.search,
+                                color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                              ),
+                              suffixIcon: _searchQuery.isNotEmpty
+                                  ? IconButton(
+                                      icon: Icon(Icons.clear, color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        setState(() => _searchQuery = '');
+                                      },
+                                    )
+                                  : null,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.zero,
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 14,
+                                horizontal: 16,
+                              ),
+                            ),
+                            style: TextStyle(
+                              fontFamily: 'BrandonGrotesque',
+                              fontSize: 16,
+                              color: _isDarkMode ? Colors.white : const Color(0xFF0F172A),
+                            ),
                           ),
-                          filled: true,
-                          fillColor: _isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: 14,
-                            horizontal: 16,
-                          ),
-                        ),
-                        style: GoogleFonts.afacad(
-                          color: _isDarkMode ? Colors.white : const Color(0xFF0F172A),
                         ),
                       ),
                     ),
@@ -385,13 +444,35 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                         opacity: _fadeAnimation,
                         child: SlideTransition(
                           position: _slideAnimation,
-                          child: Text(
-                            'Checked-in Visitors',
-                            style: GoogleFonts.poppins(
-                              fontSize: isSmallScreen ? 22 : 26,
-                              fontWeight: FontWeight.w700,
-                              color: _isDarkMode ? Colors.white : const Color(0xFF0F172A),
-                            ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Checked-in Visitors',
+                                style: TextStyle(
+                                  fontSize: isSmallScreen ? 22 : 26,
+                                  fontWeight: FontWeight.w700,
+                                  fontFamily: 'BrandonGrotesque',
+                                  color: _isDarkMode ? Colors.white : const Color(0xFF0F172A),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primaryBlue.withOpacity(0.1),
+                                  borderRadius: BorderRadius.zero,
+                                ),
+                                child: Text(
+                                  '${filteredVisitors.length} visitors',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontFamily: 'BrandonGrotesque',
+                                    color: AppColors.primaryBlue,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -412,50 +493,87 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                           )
                         : filteredVisitors.isEmpty
                             ? SliverToBoxAdapter(
-                                child: Container(
-                                  padding: const EdgeInsets.all(20),
-                                  decoration: BoxDecoration(
-                                    color: _isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(_isDarkMode ? 0.2 : 0.1),
-                                        blurRadius: 20,
-                                        offset: const Offset(0, 8),
+                                child: ScaleTransition(
+                                  scale: _fabAnimation,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(40),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          _isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+                                          _isDarkMode ? const Color(0xFF0F172A) : Colors.grey.shade50,
+                                        ],
                                       ),
-                                    ],
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Icon(
-                                        Icons.people_outline_rounded,
-                                        size: 64,
-                                        color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                                      ),
-                                      const SizedBox(height: 16),
-                                      Text(
-                                        'No checked-in visitors found',
-                                        style: GoogleFonts.afacad(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w500,
+                                      borderRadius: BorderRadius.zero,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(_isDarkMode ? 0.2 : 0.1),
+                                          blurRadius: 20,
+                                          offset: const Offset(0, 8),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.people_outline_rounded,
+                                          size: 64,
                                           color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                                         ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      TextButton(
-                                        onPressed: () {
-                                          HapticFeedback.selectionClick();
-                                          _loadCheckedInVisitors();
-                                        },
-                                        child: Text(
-                                          'Refresh',
-                                          style: GoogleFonts.afacad(
-                                            color: AppColors.primaryBlue,
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          'No checked-in visitors found',
+                                          style: TextStyle(
+                                            fontSize: 18,
                                             fontWeight: FontWeight.w600,
+                                            fontFamily: 'BrandonGrotesque',
+                                            color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Visitors will appear here when they check in',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontFamily: 'BrandonGrotesque',
+                                            color: _isDarkMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 20),
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              colors: [AppColors.primaryBlue, AppColors.secondaryBlue],
+                                            ),
+                                            borderRadius: BorderRadius.zero,
+                                          ),
+                                          child: ElevatedButton(
+                                            onPressed: () {
+                                              HapticFeedback.selectionClick();
+                                              _loadCheckedInVisitors();
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.transparent,
+                                              foregroundColor: Colors.white,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.zero,
+                                              ),
+                                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                              elevation: 0,
+                                            ),
+                                            child: const Text(
+                                              'Refresh',
+                                              style: TextStyle(
+                                                fontFamily: 'BrandonGrotesque',
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               )
@@ -467,7 +585,10 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                                       opacity: _fadeAnimation,
                                       child: SlideTransition(
                                         position: _slideAnimation,
-                                        child: _buildVisitorCard(visitor, visitorProvider, isSmallScreen),
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(bottom: 12),
+                                          child: _buildVisitorCard(visitor, visitorProvider, isSmallScreen),
+                                        ),
                                       ),
                                     );
                                   },
@@ -492,19 +613,21 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
         isDarkMode: _isDarkMode,
         children: const <Widget>[],
       ),
-      floatingActionButton: AnimatedOpacity(
-        opacity: _showFab ? 1.0 : 0.0,
-        duration: const Duration(milliseconds: 300),
+      floatingActionButton: ScaleTransition(
+        scale: _fabAnimation,
         child: Container(
           height: 60,
           width: 60,
           decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [AppColors.primaryBlue, AppColors.secondaryBlue],
+            ),
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: AppColors.primaryBlue.withOpacity(0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: AppColors.primaryBlue.withOpacity(0.4),
+                blurRadius: 15,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
@@ -514,9 +637,9 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
               _confettiController.play();
               Navigator.pushNamed(context, '/visitor-registration');
             },
-            backgroundColor: AppColors.primaryBlue,
+            backgroundColor: Colors.transparent,
             elevation: 0,
-            child: const Icon(Icons.add_rounded, size: 28, color: Colors.white),
+            child: const Icon(Icons.add_rounded, size: 32, color: Colors.white),
           ),
         ),
       ),
@@ -525,7 +648,7 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
   }
 
   Widget _buildVisitorCard(Visitor visitor, VisitorProvider provider, bool isSmallScreen) {
-    final statusColor = visitor.checkOutTime != null ? Colors.green : Colors.orange;
+    final statusColor = visitor.checkOutTime != null ? Colors.green : const Color(0xFFF59E0B);
     final visitTypeLabel = visitor.visitType == 'staff' ? 'Visiting Staff' : 'Visiting Office';
     final destinationName = provider.destinations.isNotEmpty
         ? provider.destinations.firstWhere(
@@ -541,18 +664,26 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
           HapticFeedback.lightImpact();
           _showVisitorDetailsModal(visitor, provider);
         },
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
           padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
           decoration: BoxDecoration(
-            color: _isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                _isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+                _isDarkMode ? const Color(0xFF0F172A) : Colors.grey.shade50,
+              ],
+            ),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(_isDarkMode ? 0.2 : 0.1),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-                spreadRadius: -5,
+                color: Colors.black.withOpacity(_isDarkMode ? 0.2 : 0.05),
+                blurRadius: 15,
+                offset: const Offset(0, 5),
+                spreadRadius: -2,
               ),
             ],
             border: _isDarkMode ? Border.all(color: const Color(0xFF334155), width: 1) : null,
@@ -560,16 +691,18 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
           child: Row(
             children: [
               Container(
-                width: isSmallScreen ? 44 : 48,
-                height: isSmallScreen ? 44 : 48,
+                width: isSmallScreen ? 50 : 54,
+                height: isSmallScreen ? 50 : 54,
                 decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    colors: [statusColor.withOpacity(0.2), statusColor.withOpacity(0.1)],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
                   Icons.person_rounded,
                   color: statusColor,
-                  size: isSmallScreen ? 22 : 24,
+                  size: isSmallScreen ? 24 : 26,
                 ),
               ),
               const SizedBox(width: 16),
@@ -579,49 +712,80 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                   children: [
                     Text(
                       visitor.name ?? 'Unknown Visitor',
-                      style: GoogleFonts.poppins(
+                      style: TextStyle(
                         fontSize: isSmallScreen ? 16 : 18,
                         fontWeight: FontWeight.w700,
+                        fontFamily: 'BrandonGrotesque',
                         color: _isDarkMode ? Colors.white : const Color(0xFF0F172A),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'ID: ${visitor.identificationNumber ?? 'N/A'}',
-                      style: GoogleFonts.afacad(
-                        fontSize: isSmallScreen ? 13 : 14,
-                        color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$visitTypeLabel • ${visitor.hadAppointment == true ? 'Has Appointment' : 'No Appointment'}',
-                      style: GoogleFonts.afacad(
-                        fontSize: isSmallScreen ? 12 : 13,
-                        color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Checked in: ${visitor.checkInTime?.format(context) ?? 'Not available'}',
-                      style: GoogleFonts.afacad(
-                        fontSize: isSmallScreen ? 12 : 13,
-                        color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                      ),
-                    ),
-                    if (visitor.checkOutTime != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Checked out: ${visitor.checkOutTime?.format(context) ?? 'Not available'}',
-                        style: GoogleFonts.afacad(
-                          fontSize: isSmallScreen ? 12 : 13,
-                          color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(Icons.badge, size: 14, color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'ID: ${visitor.identificationNumber ?? 'N/A'}',
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 12 : 13,
+                            fontFamily: 'BrandonGrotesque',
+                            color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.business_center, size: 14, color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                        const SizedBox(width: 4),
+                        Text(
+                          visitTypeLabel,
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 12 : 13,
+                            fontFamily: 'BrandonGrotesque',
+                            color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 4,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(Icons.event, size: 14, color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                        const SizedBox(width: 4),
+                        Text(
+                          visitor.hadAppointment == true ? 'Has Appointment' : 'No Appointment',
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 12 : 13,
+                            fontFamily: 'BrandonGrotesque',
+                            color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.access_time, size: 14, color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Check-in: ${visitor.checkInTime?.format(context) ?? 'Not available'}',
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 11 : 12,
+                            fontFamily: 'BrandonGrotesque',
+                            color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -638,7 +802,9 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.1),
+                          gradient: LinearGradient(
+                            colors: [statusColor.withOpacity(0.2), statusColor.withOpacity(0.1)],
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
@@ -652,8 +818,9 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                             const SizedBox(width: 4),
                             Text(
                               'Check Out',
-                              style: GoogleFonts.afacad(
+                              style: TextStyle(
                                 fontSize: 12,
+                                fontFamily: 'BrandonGrotesque',
                                 color: statusColor,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -666,16 +833,30 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
+                        gradient: LinearGradient(
+                          colors: [Colors.green.withOpacity(0.2), Colors.green.withOpacity(0.1)],
+                        ),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(
-                        'Checked Out',
-                        style: GoogleFonts.afacad(
-                          fontSize: 12,
-                          color: statusColor,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.check_circle_rounded,
+                            size: 16,
+                            color: Colors.green,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Checked Out',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'BrandonGrotesque',
+                              color: Colors.green,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                 ],
@@ -725,75 +906,119 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  visitor.name ?? 'Unknown Visitor',
-                  style: GoogleFonts.poppins(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: _isDarkMode ? Colors.white : const Color(0xFF0F172A),
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppColors.primaryBlue, AppColors.secondaryBlue],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(Icons.person_rounded, color: Colors.white, size: 28),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        visitor.name ?? 'Unknown Visitor',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'BrandonGrotesque',
+                          color: _isDarkMode ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 24),
+                _buildDetailSection('Personal Information', _isDarkMode, [
+                  _buildDetailRow('ID Number', visitor.identificationNumber ?? 'N/A', _isDarkMode),
+                  _buildDetailRow('ID Type', (visitor.identificationType ?? '').replaceAll('_', ' ').toUpperCase(), _isDarkMode),
+                  _buildDetailRow('Phone', visitor.phoneNumber ?? 'N/A', _isDarkMode),
+                  _buildDetailRow('Gender', visitor.gender ?? 'N/A', _isDarkMode),
+                  if (visitor.isMinor == true)
+                    _buildDetailRow('Guardian Phone', visitor.guardianPhone ?? 'N/A', _isDarkMode),
+                ]),
                 const SizedBox(height: 16),
-                _buildDetailRow('ID Number', visitor.identificationNumber ?? 'N/A', _isDarkMode),
-                _buildDetailRow('Phone', visitor.phoneNumber ?? 'N/A', _isDarkMode),
-                _buildDetailRow('Gender', visitor.gender ?? 'N/A', _isDarkMode),
-                _buildDetailRow('Destination', destinationName, _isDarkMode),
-                _buildDetailRow('Check-in Time', visitor.checkInTime?.format(context) ?? 'Not available', _isDarkMode),
-                _buildDetailRow('Check-out Time', visitor.checkOutTime?.format(context) ?? 'Not checked out', _isDarkMode),
-                _buildDetailRow('Host Type', visitor.visitType ?? 'N/A', _isDarkMode),
-                _buildDetailRow('Appointment', visitor.hadAppointment == true ? 'Yes' : 'No', _isDarkMode),
-                _buildDetailRow('Appointment Details', visitor.appointmentDetails ?? 'N/A', _isDarkMode),
-                _buildDetailRow('Remarks', visitor.remarks ?? 'N/A', _isDarkMode),
-                if (visitor.vehicleType != null || visitor.vehicleRegistration != null)
-                  _buildDetailRow(
-                    'Vehicle',
-                    '${visitor.vehicleType ?? 'N/A'} (${visitor.vehicleRegistration ?? 'N/A'})',
-                    _isDarkMode,
-                  ),
-                if (visitor.isMinor == true)
-                  _buildDetailRow('Guardian Phone', visitor.guardianPhone ?? 'N/A', _isDarkMode),
-                if (visitor.host != null) ...[
-                  _buildDetailRow('Host Name', visitor.host!['name'] ?? 'N/A', _isDarkMode),
-                  _buildDetailRow('Host Phone', visitor.host!['phone'] ?? 'N/A', _isDarkMode),
-                  if (visitor.host!['email'] != null && visitor.host!['email'] != 'N/A')
-                    _buildDetailRow('Host Email', visitor.host!['email'] ?? 'N/A', _isDarkMode),
-                  if (visitor.host!['department'] != null && visitor.host!['department'] != 'N/A')
-                    _buildDetailRow('Host Department', visitor.host!['department'] ?? 'N/A', _isDarkMode),
-                  if (visitor.host!['position'] != null && visitor.host!['position'] != 'N/A')
-                    _buildDetailRow('Host Position', visitor.host!['position'] ?? 'N/A', _isDarkMode),
+                _buildDetailSection('Visit Information', _isDarkMode, [
+                  _buildDetailRow('Destination', destinationName, _isDarkMode),
+                  _buildDetailRow('Check-in Time', visitor.checkInTime?.format(context) ?? 'Not available', _isDarkMode),
+                  _buildDetailRow('Check-out Time', visitor.checkOutTime?.format(context) ?? 'Not checked out', _isDarkMode),
+                  _buildDetailRow('Host Type', visitor.visitType?.toUpperCase() ?? 'N/A', _isDarkMode),
+                  _buildDetailRow('Appointment', visitor.hadAppointment == true ? 'Yes' : 'No', _isDarkMode),
+                  if (visitor.appointmentDetails != null && visitor.appointmentDetails != 'N/A')
+                    _buildDetailRow('Appointment Details', visitor.appointmentDetails ?? 'N/A', _isDarkMode),
+                  if (visitor.remarks != null && visitor.remarks != 'N/A')
+                    _buildDetailRow('Remarks', visitor.remarks ?? 'N/A', _isDarkMode),
+                  if (visitor.vehicleType != null || visitor.vehicleRegistration != null)
+                    _buildDetailRow('Vehicle', '${visitor.vehicleType ?? 'N/A'} (${visitor.vehicleRegistration ?? 'N/A'})', _isDarkMode),
+                ]),
+                if (visitor.host != null && visitor.host!['name'] != null && visitor.host!['name'] != 'N/A') ...[
+                  const SizedBox(height: 16),
+                  _buildDetailSection('Host Information', _isDarkMode, [
+                    _buildDetailRow('Name', visitor.host!['name'] ?? 'N/A', _isDarkMode),
+                    _buildDetailRow('Phone', visitor.host!['phone'] ?? 'N/A', _isDarkMode),
+                    if (visitor.host!['email'] != null && visitor.host!['email'] != 'N/A')
+                      _buildDetailRow('Email', visitor.host!['email'] ?? 'N/A', _isDarkMode),
+                    if (visitor.host!['department'] != null && visitor.host!['department'] != 'N/A')
+                      _buildDetailRow('Department', visitor.host!['department'] ?? 'N/A', _isDarkMode),
+                    if (visitor.host!['position'] != null && visitor.host!['position'] != 'N/A')
+                      _buildDetailRow('Position', visitor.host!['position'] ?? 'N/A', _isDarkMode),
+                  ]),
                 ],
                 if (visitor.officeName != null && visitor.officeName != 'N/A') ...[
-                  _buildDetailRow('Office Name', visitor.officeName ?? 'N/A', _isDarkMode),
-                  _buildDetailRow('Office Phone', visitor.officePhone ?? 'N/A', _isDarkMode),
-                  if (visitor.officeEmail != null && visitor.officeEmail != 'N/A')
-                    _buildDetailRow('Office Email', visitor.officeEmail ?? 'N/A', _isDarkMode),
-                  if (visitor.officeDepartment != null && visitor.officeDepartment != 'N/A')
-                    _buildDetailRow('Office Department', visitor.officeDepartment ?? 'N/A', _isDarkMode),
-                  if (visitor.officeContactPerson != null && visitor.officeContactPerson != 'N/A')
-                    _buildDetailRow('Office Contact', visitor.officeContactPerson ?? 'N/A', _isDarkMode),
+                  const SizedBox(height: 16),
+                  _buildDetailSection('Office Information', _isDarkMode, [
+                    _buildDetailRow('Office Name', visitor.officeName ?? 'N/A', _isDarkMode),
+                    _buildDetailRow('Phone', visitor.officePhone ?? 'N/A', _isDarkMode),
+                    if (visitor.officeEmail != null && visitor.officeEmail != 'N/A')
+                      _buildDetailRow('Email', visitor.officeEmail ?? 'N/A', _isDarkMode),
+                    if (visitor.officeDepartment != null && visitor.officeDepartment != 'N/A')
+                      _buildDetailRow('Department', visitor.officeDepartment ?? 'N/A', _isDarkMode),
+                    if (visitor.officeContactPerson != null && visitor.officeContactPerson != 'N/A')
+                      _buildDetailRow('Contact Person', visitor.officeContactPerson ?? 'N/A', _isDarkMode),
+                  ]),
                 ],
                 const SizedBox(height: 24),
                 if (visitor.checkOutTime == null)
                   Center(
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        await _showCheckoutConfirmation(visitor, provider);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Colors.red, Colors.redAccent],
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        elevation: 2,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.red.withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                      child: Text(
-                        'Check Out Visitor',
-                        style: GoogleFonts.afacad(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await _showCheckoutConfirmation(visitor, provider);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Check Out Visitor',
+                          style: TextStyle(
+                            fontFamily: 'BrandonGrotesque',
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
                     ),
@@ -806,9 +1031,36 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
     );
   }
 
+  Widget _buildDetailSection(String title, bool isDarkMode, List<Widget> children) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDarkMode ? const Color(0xFF334155) : Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: isDarkMode ? Border.all(color: const Color(0xFF475569), width: 1) : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'BrandonGrotesque',
+              color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
   Widget _buildDetailRow(String label, String value, bool isDarkMode) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -816,9 +1068,10 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
             width: 120,
             child: Text(
               label,
-              style: GoogleFonts.afacad(
-                fontSize: 14,
+              style: TextStyle(
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
+                fontFamily: 'BrandonGrotesque',
                 color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
               ),
             ),
@@ -826,8 +1079,9 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
           Expanded(
             child: Text(
               value,
-              style: GoogleFonts.afacad(
-                fontSize: 14,
+              style: TextStyle(
+                fontSize: 13,
+                fontFamily: 'BrandonGrotesque',
                 color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
               ),
             ),
@@ -852,9 +1106,10 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
           contentPadding: const EdgeInsets.all(24),
           title: Text(
             'Confirm Check Out',
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
+              fontFamily: 'BrandonGrotesque',
               color: _isDarkMode ? Colors.white : const Color(0xFF0F172A),
             ),
             textAlign: TextAlign.center,
@@ -862,22 +1117,49 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.logout_rounded, size: 48, color: Colors.orange),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.logout_rounded, size: 48, color: Colors.orange),
+              ),
               const SizedBox(height: 16),
               Text(
                 'Are you sure you want to check out ${visitor.name}?',
-                style: GoogleFonts.afacad(
+                style: TextStyle(
                   fontSize: 16,
+                  fontFamily: 'BrandonGrotesque',
                   color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Check-in time: ${visitor.checkInTime?.format(context) ?? 'Not available'}',
-                style: GoogleFonts.afacad(
-                  fontSize: 14,
-                  color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _isDarkMode ? const Color(0xFF334155) : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.access_time, size: 16, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Check-in: ${visitor.checkInTime?.format(context) ?? 'Not available'}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'BrandonGrotesque',
+                            color: _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -891,61 +1173,71 @@ class _VisitorListScreenState extends State<VisitorListScreen> with TickerProvid
               ),
               child: Text(
                 'Cancel',
-                style: GoogleFonts.afacad(
+                style: TextStyle(
+                  fontFamily: 'BrandonGrotesque',
                   color: _isDarkMode ? Colors.white : const Color(0xFF64748B),
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                try {
-                  // Pass empty token since VisitorProvider fetches it internally
-                  await provider.checkOutVisitor(visitor);
-                  _confettiController.play();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '${visitor.name} checked out successfully',
-                        style: GoogleFonts.afacad(color: Colors.white),
-                      ),
-                      backgroundColor: Colors.green,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  );
-                } catch (e) {
-                  debugPrint('❌ Error checking out visitor: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Failed to check out: ${e.toString()}',
-                        style: GoogleFonts.afacad(color: Colors.white),
-                      ),
-                      backgroundColor: Colors.red,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Colors.red, Colors.redAccent],
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(
-                'Check Out',
-                style: GoogleFonts.afacad(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
+              child: ElevatedButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  try {
+                    await provider.checkOutVisitor(visitor);
+                    _confettiController.play();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '${visitor.name} checked out successfully',
+                          style: const TextStyle(fontFamily: 'BrandonGrotesque', color: Colors.white),
+                        ),
+                        backgroundColor: Colors.green,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    );
+                  } catch (e) {
+                    debugPrint('❌ Error checking out visitor: $e');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Failed to check out: ${e.toString()}',
+                          style: const TextStyle(fontFamily: 'BrandonGrotesque', color: Colors.white),
+                        ),
+                        backgroundColor: Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Check Out',
+                  style: TextStyle(
+                    fontFamily: 'BrandonGrotesque',
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),

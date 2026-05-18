@@ -364,7 +364,9 @@ class VisitorProvider extends ChangeNotifier {
     final token = await _getTokenFromPreferences();
     final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
     if (token == null || gateId == null) {
-      debugPrint('⚠️ Cannot create visit: No authentication token or gate ID found');
+      debugPrint(
+        '⚠️ Cannot create visit: No authentication token or gate ID found',
+      );
       throw VisitorAuthException('No authentication token or gate ID found');
     }
 
@@ -385,32 +387,65 @@ class VisitorProvider extends ChangeNotifier {
     try {
       final payload = {
         'visitor_id': Visitor.parseInt(visit['visitor_id'], 'visitor_id'),
-        'visitor_destination_id': Visitor.parseInt(visit['visitor_destination_id'], 'visitor_destination_id'),
-        'visitor_tag_id': Visitor.parseInt(visit['visitor_tag_id'], 'visitor_tag_id'),
+        'visitor_destination_id': Visitor.parseInt(
+          visit['visitor_destination_id'],
+          'visitor_destination_id',
+        ),
+        'visitor_tag_id': Visitor.parseInt(
+          visit['visitor_tag_id'],
+          'visitor_tag_id',
+        ),
         'gate_id': Visitor.parseInt(visit['gate_id'], 'gate_id'),
         // Include visit details only if they are provided
         if (visit['visit_type'] != null) ...{
           'visit_type': _sanitizeInput(visit['visit_type']),
           if (visit['visit_type'] == 'staff') ...{
-            if (visit['host']?.isNotEmpty == true) 'host': _sanitizeInput(visit['host']),
-            if (visit['host_phone']?.isNotEmpty == true) 'host_phone': _sanitizeInput(visit['host_phone']?.trim().replaceFirst(RegExp(r'^\+254'), '')),
-            if (visit['host_email']?.isNotEmpty == true) 'host_email': _sanitizeInput(visit['host_email']),
-            if (visit['host_department']?.isNotEmpty == true) 'host_department': _sanitizeInput(visit['host_department']),
-            if (visit['host_position']?.isNotEmpty == true) 'host_position': _sanitizeInput(visit['host_position']),
+            if (visit['host']?.isNotEmpty == true)
+              'host': _sanitizeInput(visit['host']),
+            if (visit['host_phone']?.isNotEmpty == true)
+              'host_phone': _sanitizeInput(
+                visit['host_phone']?.trim().replaceFirst(RegExp(r'^\+254'), ''),
+              ),
+            if (visit['host_email']?.isNotEmpty == true)
+              'host_email': _sanitizeInput(visit['host_email']),
+            if (visit['host_department']?.isNotEmpty == true)
+              'host_department': _sanitizeInput(visit['host_department']),
+            if (visit['host_position']?.isNotEmpty == true)
+              'host_position': _sanitizeInput(visit['host_position']),
           },
           if (visit['visit_type'] == 'office') ...{
-            if (visit['office_name']?.isNotEmpty == true) 'office_name': _sanitizeInput(visit['office_name']),
-            if (visit['office_phone']?.isNotEmpty == true) 'office_phone': _sanitizeInput(visit['office_phone']?.trim().replaceFirst(RegExp(r'^\+254'), '')),
-            if (visit['office_email']?.isNotEmpty == true) 'office_email': _sanitizeInput(visit['office_email']),
-            if (visit['office_department']?.isNotEmpty == true) 'office_department': _sanitizeInput(visit['office_department']),
-            if (visit['office_contact_person']?.isNotEmpty == true) 'office_contact_person': _sanitizeInput(visit['office_contact_person']),
+            if (visit['office_name']?.isNotEmpty == true)
+              'office_name': _sanitizeInput(visit['office_name']),
+            if (visit['office_phone']?.isNotEmpty == true)
+              'office_phone': _sanitizeInput(
+                visit['office_phone']?.trim().replaceFirst(
+                  RegExp(r'^\+254'),
+                  '',
+                ),
+              ),
+            if (visit['office_email']?.isNotEmpty == true)
+              'office_email': _sanitizeInput(visit['office_email']),
+            if (visit['office_department']?.isNotEmpty == true)
+              'office_department': _sanitizeInput(visit['office_department']),
+            if (visit['office_contact_person']?.isNotEmpty == true)
+              'office_contact_person': _sanitizeInput(
+                visit['office_contact_person'],
+              ),
           },
-          if (visit['had_appointment'] != null) 'had_appointment': visit['had_appointment'],
-          if (visit['appointment_details']?.isNotEmpty == true) 'appointment_details': _sanitizeInput(visit['appointment_details']),
-          if (visit['vehicle_type']?.isNotEmpty == true) 'vehicle_type': _sanitizeInput(visit['vehicle_type']),
-          if (visit['vehicle_registration']?.isNotEmpty == true) 'vehicle_registration': _sanitizeInput(visit['vehicle_registration']),
+          if (visit['had_appointment'] != null)
+            'had_appointment': visit['had_appointment'],
+          if (visit['appointment_details']?.isNotEmpty == true)
+            'appointment_details': _sanitizeInput(visit['appointment_details']),
+          if (visit['vehicle_type']?.isNotEmpty == true)
+            'vehicle_type': _sanitizeInput(visit['vehicle_type']),
+          if (visit['vehicle_registration']?.isNotEmpty == true)
+            'vehicle_registration': _sanitizeInput(
+              visit['vehicle_registration'],
+            ),
         },
-      }..removeWhere((key, value) => value == null || (value is String && value.isEmpty));
+      }..removeWhere(
+        (key, value) => value == null || (value is String && value.isEmpty),
+      );
 
       debugPrint('📤 Sending payload to /api/visits: ${jsonEncode(payload)}');
 
@@ -434,18 +469,28 @@ class VisitorProvider extends ChangeNotifier {
       } else {
         if (response.statusCode == 422) {
           final errorData = jsonDecode(response.body);
-          final errorMessage = errorData['message']?.toString() ?? errorData['error']?.toString() ?? 'Validation failed';
-          final validationErrors = errorData['details'] != null
-              ? (errorData['details'] as Map<String, dynamic>).entries.map((e) => '${e.key}: ${e.value.join(', ')}').join('; ')
-              : 'No specific error details provided';
+          final errorMessage =
+              errorData['message']?.toString() ??
+              errorData['error']?.toString() ??
+              'Validation failed';
+          final validationErrors =
+              errorData['details'] != null
+                  ? (errorData['details'] as Map<String, dynamic>).entries
+                      .map((e) => '${e.key}: ${e.value.join(', ')}')
+                      .join('; ')
+                  : 'No specific error details provided';
           debugPrint('❌ Validation error: $errorMessage - $validationErrors');
           throw VisitorValidationException('$errorMessage - $validationErrors');
         } else if (response.statusCode == 401) {
           debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
-          throw VisitorAuthException('Authentication failed: Invalid or expired token');
+          throw VisitorAuthException(
+            'Authentication failed: Invalid or expired token',
+          );
         }
         debugPrint('❌ API error: ${response.statusCode} - ${response.body}');
-        throw VisitorNetworkException('Failed to create visit: ${response.statusCode} - ${response.body}');
+        throw VisitorNetworkException(
+          'Failed to create visit: ${response.statusCode} - ${response.body}',
+        );
       }
     } catch (e) {
       debugPrint('❌ Create visit error: $e');
@@ -903,14 +948,15 @@ class VisitorProvider extends ChangeNotifier {
     }
   }
 
-  
   Future<void> registerVisitor(Visitor visitor) async {
     if (_isDisposed) return;
 
     final token = await _getTokenFromPreferences();
     final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
     if (token == null || gateId == null) {
-      debugPrint('⚠️ Cannot register visitor: No authentication token or gate ID found');
+      debugPrint(
+        '⚠️ Cannot register visitor: No authentication token or gate ID found',
+      );
       throw VisitorAuthException('No authentication token or gate ID found');
     }
 
@@ -955,7 +1001,9 @@ class VisitorProvider extends ChangeNotifier {
       debugPrint('✅ Retrieved available visitor tag ID: $visitorTagId');
     } catch (e) {
       debugPrint('❌ Failed to get available tag: $e');
-      throw VisitorValidationException('Unable to register visitor: No available tags: $e');
+      throw VisitorValidationException(
+        'Unable to register visitor: No available tags: $e',
+      );
     }
 
     try {
@@ -963,43 +1011,90 @@ class VisitorProvider extends ChangeNotifier {
         if (visitorId != null) 'visitor_id': visitorId,
         if (visitorId == null) ...{
           'name': _sanitizeInput(visitor.name),
-          'phone_number': visitor.phoneNumber?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
+          'phone_number':
+              visitor.phoneNumber?.trim().replaceFirst(RegExp(r'^\+254'), '') ??
+              '',
           'phone_country_code': visitor.phoneCountryCode ?? '+254',
           'is_minor': visitor.isMinor ?? false,
-          'guardian_phone': visitor.isMinor == true && visitor.guardianPhone != null
-              ? visitor.guardianPhone!.trim().replaceFirst(RegExp(r'^\+254'), '')
-              : null,
+          'guardian_phone':
+              visitor.isMinor == true && visitor.guardianPhone != null
+                  ? visitor.guardianPhone!.trim().replaceFirst(
+                    RegExp(r'^\+254'),
+                    '',
+                  )
+                  : null,
           'identification_type': _sanitizeInput(visitor.identificationType),
           'identification_number': _sanitizeInput(visitor.identificationNumber),
           'gender': _sanitizeInput(visitor.gender),
         },
         'visitor_tag_id': Visitor.parseInt(visitorTagId, 'visitor_tag_id'),
-        'destination_id': Visitor.parseInt(visitor.destinationId, 'destination_id'),
-        'visitor_gate_id': Visitor.parseInt(visitor.gateId ?? gateId, 'visitor_gate_id'),
-        if (visitor.hadAppointment != null) 'had_appointment': visitor.hadAppointment,
-        if (visitor.appointmentDetails?.isNotEmpty ?? false) 'appointment_details': _sanitizeInput(visitor.appointmentDetails),
-        if (visitor.vehicleType?.isNotEmpty ?? false) 'vehicle_type': _sanitizeInput(visitor.vehicleType),
-        if (visitor.vehicleRegistration?.isNotEmpty ?? false) 'vehicle_registration': _sanitizeInput(visitor.vehicleRegistration),
+        'destination_id': Visitor.parseInt(
+          visitor.destinationId,
+          'destination_id',
+        ),
+        'visitor_gate_id': Visitor.parseInt(
+          visitor.gateId ?? gateId,
+          'visitor_gate_id',
+        ),
+        if (visitor.hadAppointment != null)
+          'had_appointment': visitor.hadAppointment,
+        if (visitor.appointmentDetails?.isNotEmpty ?? false)
+          'appointment_details': _sanitizeInput(visitor.appointmentDetails),
+        if (visitor.vehicleType?.isNotEmpty ?? false)
+          'vehicle_type': _sanitizeInput(visitor.vehicleType),
+        if (visitor.vehicleRegistration?.isNotEmpty ?? false)
+          'vehicle_registration': _sanitizeInput(visitor.vehicleRegistration),
         if (visitor.visitType != null) ...{
           'visit_type': _sanitizeInput(visitor.visitType),
           if (visitor.visitType == 'staff' && visitor.host != null) ...{
             'host': _sanitizeInput(visitor.host!['name']),
-            'host_phone': visitor.host!['phone']?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
-            'host_email': visitor.host!['email']?.isNotEmpty == true ? _sanitizeInput(visitor.host!['email']) : null,
-            'host_department': visitor.host!['department']?.isNotEmpty == true ? _sanitizeInput(visitor.host!['department']) : null,
-            'host_position': visitor.host!['position']?.isNotEmpty == true ? _sanitizeInput(visitor.host!['position']) : null,
+            'host_phone':
+                visitor.host!['phone']?.trim().replaceFirst(
+                  RegExp(r'^\+254'),
+                  '',
+                ) ??
+                '',
+            'host_email':
+                visitor.host!['email']?.isNotEmpty == true
+                    ? _sanitizeInput(visitor.host!['email'])
+                    : null,
+            'host_department':
+                visitor.host!['department']?.isNotEmpty == true
+                    ? _sanitizeInput(visitor.host!['department'])
+                    : null,
+            'host_position':
+                visitor.host!['position']?.isNotEmpty == true
+                    ? _sanitizeInput(visitor.host!['position'])
+                    : null,
           },
           if (visitor.visitType == 'office') ...{
             'office_name': _sanitizeInput(visitor.officeName),
-            'office_phone': visitor.officePhone?.trim().replaceFirst(RegExp(r'^\+254'), '') ?? '',
-            'office_email': visitor.officeEmail?.isNotEmpty == true ? _sanitizeInput(visitor.officeEmail) : null,
-            'office_department': visitor.officeDepartment?.isNotEmpty == true ? _sanitizeInput(visitor.officeDepartment) : null,
-            'office_contact_person': _sanitizeInput(visitor.officeContactPerson),
+            'office_phone':
+                visitor.officePhone?.trim().replaceFirst(
+                  RegExp(r'^\+254'),
+                  '',
+                ) ??
+                '',
+            'office_email':
+                visitor.officeEmail?.isNotEmpty == true
+                    ? _sanitizeInput(visitor.officeEmail)
+                    : null,
+            'office_department':
+                visitor.officeDepartment?.isNotEmpty == true
+                    ? _sanitizeInput(visitor.officeDepartment)
+                    : null,
+            'office_contact_person': _sanitizeInput(
+              visitor.officeContactPerson,
+            ),
           },
         },
-      }..removeWhere((key, value) => value == null || (value is String && value.isEmpty));
+      }..removeWhere(
+        (key, value) => value == null || (value is String && value.isEmpty),
+      );
 
-      debugPrint('📤 Sending payload to /api/visitors-store: ${jsonEncode(payload)}');
+      debugPrint(
+        '📤 Sending payload to /api/visitors-store: ${jsonEncode(payload)}',
+      );
 
       final response = await _retryApiCall(
         () => http.post(
@@ -1021,26 +1116,43 @@ class VisitorProvider extends ChangeNotifier {
       if (response.statusCode == 201) {
         if (data['visitor'] == null) {
           debugPrint('❌ Invalid response: Missing visitor data');
-          throw VisitorValidationException('Invalid response: Missing visitor data');
+          throw VisitorValidationException(
+            'Invalid response: Missing visitor data',
+          );
         }
         final visitorMap = Map<String, dynamic>.from(data['visitor']);
         debugPrint('📝 Original visitor map: ${jsonEncode(visitorMap)}');
 
         try {
-          visitorMap['id'] = Visitor.parseInt(visitorMap['id'], 'id') ?? (throw VisitorValidationException('Invalid visitor id: ${visitorMap['id']}'));
+          visitorMap['id'] =
+              Visitor.parseInt(visitorMap['id'], 'id') ??
+              (throw VisitorValidationException(
+                'Invalid visitor id: ${visitorMap['id']}',
+              ));
           if (visitorMap['visitor_tag_id'] != null) {
-            visitorMap['visitor_tag_id'] = Visitor.parseInt(visitorMap['visitor_tag_id'], 'visitor_tag_id');
+            visitorMap['visitor_tag_id'] = Visitor.parseInt(
+              visitorMap['visitor_tag_id'],
+              'visitor_tag_id',
+            );
           }
           if (visitorMap['destination_id'] != null) {
-            visitorMap['destination_id'] = Visitor.parseInt(visitorMap['destination_id'], 'destination_id');
+            visitorMap['destination_id'] = Visitor.parseInt(
+              visitorMap['destination_id'],
+              'destination_id',
+            );
           }
           if (visitorMap['gate_id'] != null) {
-            visitorMap['gate_id'] = Visitor.parseInt(visitorMap['gate_id'], 'gate_id');
+            visitorMap['gate_id'] = Visitor.parseInt(
+              visitorMap['gate_id'],
+              'gate_id',
+            );
           }
           debugPrint('📝 Preprocessed visitor map: ${jsonEncode(visitorMap)}');
         } catch (e) {
           debugPrint('❌ Error preprocessing visitor map: $e');
-          throw VisitorValidationException('Failed to preprocess visitor map: $e');
+          throw VisitorValidationException(
+            'Failed to preprocess visitor map: $e',
+          );
         }
 
         try {
@@ -1049,23 +1161,35 @@ class VisitorProvider extends ChangeNotifier {
           debugPrint('✅ Visitor registered successfully: ${newVisitor.name}');
         } catch (e) {
           debugPrint('❌ Error creating Visitor object: $e');
-          throw VisitorValidationException('Failed to create Visitor object: $e');
+          throw VisitorValidationException(
+            'Failed to create Visitor object: $e',
+          );
         }
       } else {
         if (response.statusCode == 422) {
           final errorData = jsonDecode(response.body);
-          final errorMessage = errorData['message']?.toString() ?? errorData['error']?.toString() ?? 'Validation failed';
-          final validationErrors = errorData['details'] != null
-              ? (errorData['details'] as Map<String, dynamic>).entries.map((e) => '${e.key}: ${e.value.join(', ')}').join('; ')
-              : 'No specific error details provided';
+          final errorMessage =
+              errorData['message']?.toString() ??
+              errorData['error']?.toString() ??
+              'Validation failed';
+          final validationErrors =
+              errorData['details'] != null
+                  ? (errorData['details'] as Map<String, dynamic>).entries
+                      .map((e) => '${e.key}: ${e.value.join(', ')}')
+                      .join('; ')
+                  : 'No specific error details provided';
           debugPrint('❌ Validation error: $errorMessage - $validationErrors');
           throw VisitorValidationException('$errorMessage - $validationErrors');
         } else if (response.statusCode == 401) {
           debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
-          throw VisitorAuthException('Authentication failed: Invalid or expired token');
+          throw VisitorAuthException(
+            'Authentication failed: Invalid or expired token',
+          );
         }
         debugPrint('❌ API error: ${response.statusCode} - ${response.body}');
-        throw VisitorNetworkException('Failed to register visitor: ${response.statusCode} - ${response.body}');
+        throw VisitorNetworkException(
+          'Failed to register visitor: ${response.statusCode} - ${response.body}',
+        );
       }
     } catch (e) {
       debugPrint('❌ Registration error: $e');
@@ -1145,73 +1269,74 @@ class VisitorProvider extends ChangeNotifier {
       throw VisitorAuthException('Failed to clear stored data: $e');
     }
   }
-Future<void> loadCheckedInVisitors() async {
-  if (_isDisposed) return;
 
-  final token = await _getTokenFromPreferences();
-  final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
-  final deviceGate =
-      (await SharedPreferences.getInstance()).getString('device_gate') ??
-      'Gate A';
-  if (token == null || gateId == null) {
-    debugPrint(
-      '⚠️ Cannot load checked-in visitors: No authentication token or gate ID found',
-    );
-    throw VisitorAuthException('No authentication token or gate ID found');
-  }
+  Future<void> loadCheckedInVisitors() async {
+    if (_isDisposed) return;
 
-  _token = token;
-  _gateId = gateId;
-  _deviceGate = deviceGate;
+    final token = await _getTokenFromPreferences();
+    final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
+    final deviceGate =
+        (await SharedPreferences.getInstance()).getString('device_gate') ??
+        'Gate A';
+    if (token == null || gateId == null) {
+      debugPrint(
+        '⚠️ Cannot load checked-in visitors: No authentication token or gate ID found',
+      );
+      throw VisitorAuthException('No authentication token or gate ID found');
+    }
 
-  _isLoading = true;
-  _safeNotifyListeners();
-  try {
-    debugPrint(
-      '🔑 Using token: ${token.substring(0, 10)}... for loading checked-in visitors',
-    );
-    final uri = Uri.parse(
-      '${AppStrings.apiBaseUrl}/api/visitors/checked-in',
-    ).replace(queryParameters: {'gate_id': gateId});
-    final headers = {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-    debugPrint('📡 Sending request to $uri with headers: $headers');
-    final response = await _retryApiCall(
-      () => http.get(uri, headers: headers),
-    );
+    _token = token;
+    _gateId = gateId;
+    _deviceGate = deviceGate;
 
-    debugPrint(
-      '📋 Checked-in visitors response: status=${response.statusCode}, body=${response.body}',
-    );
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final visitorList = data['visitors'] ?? [];
-      if (visitorList is! List || visitorList.isEmpty) {
-        _visitors = [];
-        _checkedInCount = 0;
-        debugPrint('⚠️ No checked-in visitors found in response');
-      } else {
-        _visitors =
-            visitorList.map((v) {
-              final visitorMap = Map<String, dynamic>.from(
-                v['visitor'] ?? {},
-              )..addAll({
-                'id': v['id']?.toString() ?? '',
-                'gate_id': gateId,
-                'gate': deviceGate,
-                'visitor_tag_id': v['visitor_tag_id']?.toString(),
-                'tag_number': v['visitor_tag_number']?.toString(),
-                'destination_id': v['visitor_destination_id']?.toString(),
-                'destination': v['visitor_destination_name']?.toString(),
-                'visit_type': v['host_type']?.toString(),
-                'check_in_time': v['check_in_time']?.toString(),
-                'check_out_time': v['check_out_time']?.toString(),
-                'host':
-                    v['host_type'] == 'staff'
-                        ? {
+    _isLoading = true;
+    _safeNotifyListeners();
+    try {
+      debugPrint(
+        '🔑 Using token: ${token.substring(0, 10)}... for loading checked-in visitors',
+      );
+      final uri = Uri.parse(
+        '${AppStrings.apiBaseUrl}/api/visitors/checked-in',
+      ).replace(queryParameters: {'gate_id': gateId});
+      final headers = {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      debugPrint('📡 Sending request to $uri with headers: $headers');
+      final response = await _retryApiCall(
+        () => http.get(uri, headers: headers),
+      );
+
+      debugPrint(
+        '📋 Checked-in visitors response: status=${response.statusCode}, body=${response.body}',
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final visitorList = data['visitors'] ?? [];
+        if (visitorList is! List || visitorList.isEmpty) {
+          _visitors = [];
+          _checkedInCount = 0;
+          debugPrint('⚠️ No checked-in visitors found in response');
+        } else {
+          _visitors =
+              visitorList.map((v) {
+                final visitorMap = Map<String, dynamic>.from(
+                  v['visitor'] ?? {},
+                )..addAll({
+                  'id': v['id']?.toString() ?? '',
+                  'gate_id': gateId,
+                  'gate': deviceGate,
+                  'visitor_tag_id': v['visitor_tag_id']?.toString(),
+                  'tag_number': v['visitor_tag_number']?.toString(),
+                  'destination_id': v['visitor_destination_id']?.toString(),
+                  'destination': v['visitor_destination_name']?.toString(),
+                  'visit_type': v['host_type']?.toString(),
+                  'check_in_time': v['check_in_time']?.toString(),
+                  'check_out_time': v['check_out_time']?.toString(),
+                  'host':
+                      v['host_type'] == 'staff'
+                          ? {
                             'name': v['host']?.toString() ?? 'N/A',
                             'phone': v['host_phone']?.toString() ?? 'N/A',
                             'email': v['host_email']?.toString() ?? 'N/A',
@@ -1219,48 +1344,49 @@ Future<void> loadCheckedInVisitors() async {
                                 v['host_department']?.toString() ?? 'N/A',
                             'position': v['host_position']?.toString() ?? 'N/A',
                           }
-                        : null,
-                'office_name': v['office_name']?.toString(),
-                'office_phone': v['office_phone']?.toString(),
-                'office_email': v['office_email']?.toString(),
-                'office_department': v['office_department']?.toString(),
-                'office_contact_person':
-                    v['office_contact_person']?.toString(),
-                'had_appointment': v['had_appointment'], // Boolean as per server
-                'appointment_details': v['appointment_details']?.toString(),
-                'remarks': v['remarks']?.toString(),
-                'vehicle_type': v['vehicle_type']?.toString(),
-                'vehicle_registration': v['vehicle_registration']?.toString(),
-                'gender': v['visitor']['gender']?.toString(), // Add gender
-              });
-              return Visitor.fromMap(visitorMap);
-            }).toList();
-        _checkedInCount = _visitors.length;
-        debugPrint(
-          '👥 Loaded ${_visitors.length} checked-in visitors for gate \'$deviceGate\' (ID: $gateId)',
+                          : null,
+                  'office_name': v['office_name']?.toString(),
+                  'office_phone': v['office_phone']?.toString(),
+                  'office_email': v['office_email']?.toString(),
+                  'office_department': v['office_department']?.toString(),
+                  'office_contact_person':
+                      v['office_contact_person']?.toString(),
+                  'had_appointment':
+                      v['had_appointment'], // Boolean as per server
+                  'appointment_details': v['appointment_details']?.toString(),
+                  'remarks': v['remarks']?.toString(),
+                  'vehicle_type': v['vehicle_type']?.toString(),
+                  'vehicle_registration': v['vehicle_registration']?.toString(),
+                  'gender': v['visitor']['gender']?.toString(), // Add gender
+                });
+                return Visitor.fromMap(visitorMap);
+              }).toList();
+          _checkedInCount = _visitors.length;
+          debugPrint(
+            '👥 Loaded ${_visitors.length} checked-in visitors for gate \'$deviceGate\' (ID: $gateId)',
+          );
+        }
+        await _saveCachedData();
+      } else {
+        _handleApiError(response, 'Failed to load checked-in visitors');
+        if (response.statusCode == 401) {
+          debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
+          throw VisitorAuthException(
+            'Authentication failed: Invalid or expired token',
+          );
+        }
+        throw VisitorNetworkException(
+          'Failed to load checked-in visitors: ${response.statusCode} - ${response.body}',
         );
       }
-      await _saveCachedData();
-    } else {
-      _handleApiError(response, 'Failed to load checked-in visitors');
-      if (response.statusCode == 401) {
-        debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
-        throw VisitorAuthException(
-          'Authentication failed: Invalid or expired token',
-        );
-      }
-      throw VisitorNetworkException(
-        'Failed to load checked-in visitors: ${response.statusCode} - ${response.body}',
-      );
+    } catch (e) {
+      debugPrint('❌ Error loading checked-in visitors: $e');
+      rethrow;
+    } finally {
+      _isLoading = false;
+      _safeNotifyListeners();
     }
-  } catch (e) {
-    debugPrint('❌ Error loading checked-in visitors: $e');
-    rethrow;
-  } finally {
-    _isLoading = false;
-    _safeNotifyListeners();
   }
-}
 
   /// Loads visit count for the specified time range
   Future<void> logVisitCount({String timeRange = 'Today'}) async {
@@ -1334,43 +1460,97 @@ Future<void> loadCheckedInVisitors() async {
   }
 
   /// Gets an available visitor tag ID
-  Future<int?> getAvailableVisitorTagId({String? gateId}) async {
-    try {
-      final uri = Uri.parse(
-        '${AppStrings.apiBaseUrl}/api/visitor-tags',
-      ).replace(
-        queryParameters: {
-          'unassigned': 'true',
-          if (gateId != null) 'gate_id': gateId,
-        },
-      );
-      final response = await http.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $_token',
-          'Accept': 'application/json',
-        },
-      );
-      debugPrint(
-        '📥 Available tags response: ${response.statusCode} ${response.body}',
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['tags']?.isNotEmpty == true) {
-          return data['tags'][0]['id'];
-        }
-        throw VisitorValidationException(
-          'No unassigned visitor tags available',
-        );
-      }
-      throw VisitorNetworkException(
-        'Failed to fetch available tags: ${response.statusCode}',
-      );
-    } catch (e) {
-      debugPrint('❌ Error fetching available tags: $e');
-      throw VisitorValidationException('Failed to fetch available tags: $e');
+ /// Gets an available visitor tag ID
+Future<int?> getAvailableVisitorTagId({String? gateId}) async {
+  try {
+    final token = await _getTokenFromPreferences();
+    final currentGateId = gateId ?? _gateId;
+    
+    debugPrint('🔍 Fetching available tag - Token: ${token != null ? "Present" : "NULL"}, GateId: $currentGateId');
+    
+    if (token == null || currentGateId == null) {
+      debugPrint('⚠️ Cannot fetch tags: Missing token or gate ID');
+      throw VisitorValidationException('Missing authentication or gate information');
     }
+
+    final uri = Uri.parse(
+      '${AppStrings.apiBaseUrl}/api/visitor-tags',
+    ).replace(
+      queryParameters: {
+        'unassigned': 'true',
+        'gate_id': currentGateId,
+      },
+    );
+    
+    debugPrint('📡 Fetching tags from: $uri');
+    
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      },
+    );
+    
+    debugPrint('📥 Available tags response: ${response.statusCode}');
+    debugPrint('📥 Response body: ${response.body}');
+    
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      
+      // Handle different response structures
+      List<dynamic> tagsList = [];
+      if (data['tags'] != null && data['tags'] is List) {
+        tagsList = data['tags'];
+        debugPrint('📋 Found tags in "tags" field: ${tagsList.length}');
+      } else if (data['data'] != null && data['data'] is List) {
+        tagsList = data['data'];
+        debugPrint('📋 Found tags in "data" field: ${tagsList.length}');
+      } else if (data is List) {
+        tagsList = data;
+        debugPrint('📋 Response is a list: ${tagsList.length}');
+      } else if (data['visitor_tags'] != null && data['visitor_tags'] is List) {
+        tagsList = data['visitor_tags'];
+        debugPrint('📋 Found tags in "visitor_tags" field: ${tagsList.length}');
+      }
+      
+      // Filter for unassigned tags
+      final unassignedTags = tagsList.where((tag) {
+        final isAssigned = tag['is_assigned'];
+        return isAssigned == false || 
+               isAssigned == 'false' || 
+               isAssigned == 0 ||
+               isAssigned == null;
+      }).toList();
+      
+      debugPrint('✅ Found ${unassignedTags.length} unassigned tags out of ${tagsList.length} total');
+      
+      if (unassignedTags.isNotEmpty) {
+        final tagId = unassignedTags.first['id'];
+        final tagNumber = unassignedTags.first['tag_number'] ?? 'Unknown';
+        debugPrint('🎫 Selected tag ID: $tagId, Number: $tagNumber');
+        return tagId is int ? tagId : int.tryParse(tagId.toString());
+      }
+      
+      debugPrint('⚠️ No unassigned visitor tags available for gate $currentGateId');
+      throw VisitorValidationException('No unassigned visitor tags available');
+    } else if (response.statusCode == 401) {
+      debugPrint('🔐 Authentication failed when fetching tags');
+      throw VisitorAuthException('Session expired. Please login again.');
+    } else {
+      debugPrint('❌ Failed to fetch tags: ${response.statusCode}');
+      throw VisitorNetworkException('Failed to fetch available tags: ${response.statusCode}');
+    }
+  } catch (e) {
+    debugPrint('❌ Error fetching available tags: $e');
+    if (e is VisitorValidationException || e is VisitorAuthException || e is VisitorNetworkException) {
+      rethrow;
+    }
+    throw VisitorValidationException('Failed to fetch available tags: ${e.toString()}');
   }
+}
+
+  
 
   /// Checks out a visitor
   Future<void> checkOutVisitor(Visitor visitor) async {
@@ -1828,19 +2008,13 @@ Future<void> loadCheckedInVisitors() async {
   /// Validates ID numbers based on type
   String? validateIdNumber(String idNumber, String? idType) {
     if (idNumber.isEmpty) return 'ID number is required';
-    if (!RegExp(r'^[A-Za-z0-9]+$').hasMatch(idNumber)) {
-      return 'Invalid ID number format';
-    }
-    if (idType == 'national_id' && !RegExp(r'^\d{8}$').hasMatch(idNumber)) {
-      return 'National ID must be 8 digits';
-    }
-    if (idType == 'passport_number' &&
-        !RegExp(r'^[A-Za-z0-9]{6,12}$').hasMatch(idNumber)) {
-      return 'Passport number must be 6-12 alphanumeric characters';
-    }
-    if (idType == 'birth_certificate_number' &&
-        !RegExp(r'^[A-Za-z0-9]{8,12}$').hasMatch(idNumber)) {
-      return 'Birth certificate number must be 8-12 alphanumeric characters';
+    if (idType == 'national_id') {
+      if (!RegExp(r'^\d+$').hasMatch(idNumber)) {
+        return 'National ID should only contain digits';
+      }
+      if (idNumber.length < 6) {
+        return 'National ID must be at least 6 digits';
+      }
     }
     if (idType == 'driving_licence' &&
         !RegExp(r'^[A-Za-z0-9]{8,12}$').hasMatch(idNumber)) {

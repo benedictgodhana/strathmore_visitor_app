@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
@@ -18,34 +17,22 @@ import '../utils/constants.dart';
 import '../utils/validators.dart';
 import 'package:flutter/scheduler.dart';
 
-// Custom exceptions for better error handling
-class VisitorAuthException implements Exception {
-  final String message;
-  VisitorAuthException(this.message);
-}
-
-class VisitorNetworkException implements Exception {
-  final String message;
-  VisitorNetworkException(this.message);
-}
-
-class VisitorValidationException implements Exception {
-  final String message;
-  VisitorValidationException(this.message);
-}
-
 class VisitorRegistrationScreen extends StatefulWidget {
   const VisitorRegistrationScreen({super.key});
 
   @override
-  _VisitorRegistrationScreenState createState() => _VisitorRegistrationScreenState();
+  _VisitorRegistrationScreenState createState() =>
+      _VisitorRegistrationScreenState();
 }
 
-class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
-  // Form keys and controllers
+class _VisitorRegistrationScreenState
+    extends State<VisitorRegistrationScreen> {
+  // ─── Form keys ────────────────────────────────────────────────────────────
   final _idFormKey = GlobalKey<FormState>();
   final _personalFormKey = GlobalKey<FormState>();
   final _entryFormKey = GlobalKey<FormState>();
+
+  // ─── Controllers ──────────────────────────────────────────────────────────
   final _idNumberController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -65,18 +52,19 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
   final _vehicleTypeController = TextEditingController();
   final _vehicleRegController = TextEditingController();
 
-  // State variables
+  // ─── State ────────────────────────────────────────────────────────────────
   List<Map<String, dynamic>> _availableTags = [];
   String? _authToken;
   String? gateId;
   String? deviceGate;
-  bool _isRefreshing = false;
   String? _token;
   String _selectedIdType = 'national_id';
   String _visitType = 'staff';
   String _phoneCountryCode = '+254';
   int _currentStep = 0;
-  bool _isLoading = false;
+  bool _isSubmitting = false;
+  bool _isBackgroundChecking = false;
+  bool _isBackgroundFetching = false;
   bool _isMinor = false;
   bool _isScanning = false;
   String? _selectedDestinationId;
@@ -87,21 +75,92 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
   bool? _hadAppointment;
   Timer? _debounceTimer;
   double _formProgress = 0.0;
-  bool _showVisitDetails = false; // Controls only staff/office visit details
+  bool _showVisitDetails = false;
 
-  // Options for dropdowns
+  // Helper to get the current ID field label
+  String get _idFieldLabel {
+    switch (_selectedIdType) {
+      case 'national_id':
+        return 'National ID Number';
+      case 'passport_number':
+        return 'Passport Number';
+      case 'driving_licence':
+        return 'Driving Licence Number';
+      case 'birth_certificate_number':
+        return 'Birth Certificate Number';
+      default:
+        return 'ID Number';
+    }
+  }
+
+  // Helper to get the current ID field icon
+  IconData get _idFieldIcon {
+    switch (_selectedIdType) {
+      case 'national_id':
+        return Icons.numbers;
+      case 'passport_number':
+        return Icons.credit_card;
+      case 'driving_licence':
+        return Icons.drive_eta;
+      case 'birth_certificate_number':
+        return Icons.description;
+      default:
+        return Icons.credit_card;
+    }
+  }
+
+  // Helper to get keyboard type based on ID type
+  TextInputType get _idKeyboardType {
+    switch (_selectedIdType) {
+      case 'national_id':
+        return TextInputType.number;
+      case 'passport_number':
+        return TextInputType.text;
+      case 'driving_licence':
+        return TextInputType.text;
+      case 'birth_certificate_number':
+        return TextInputType.text;
+      default:
+        return TextInputType.text;
+    }
+  }
+
+  // Helper to get input formatters based on ID type
+  List<TextInputFormatter>? get _idInputFormatters {
+    switch (_selectedIdType) {
+      case 'national_id':
+        return [FilteringTextInputFormatter.digitsOnly];
+      case 'passport_number':
+        return [
+          FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+          LengthLimitingTextInputFormatter(20),
+        ];
+      case 'driving_licence':
+        return [
+          FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+          LengthLimitingTextInputFormatter(15),
+        ];
+      case 'birth_certificate_number':
+        return [
+          FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+          LengthLimitingTextInputFormatter(20),
+        ];
+      default:
+        return null;
+    }
+  }
+
+  // ─── Drop-down options ────────────────────────────────────────────────────
   final List<Map<String, String>> _idTypeOptions = [
     {'value': 'national_id', 'label': 'National ID'},
     {'value': 'passport_number', 'label': 'Passport Number'},
     {'value': 'birth_certificate_number', 'label': 'Birth Certificate'},
     {'value': 'driving_licence', 'label': 'Driving Licence'},
   ];
-
   final List<Map<String, String>> _visitTypeOptions = [
     {'value': 'staff', 'label': 'Visiting Staff Member'},
     {'value': 'office', 'label': 'Visiting Office'},
   ];
-
   final List<Map<String, String>> _vehicleTypeOptions = [
     {'value': 'Car', 'label': 'Car'},
     {'value': 'Motorcycle', 'label': 'Motorcycle'},
@@ -110,19 +169,26 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
     {'value': 'Bicycle', 'label': 'Bicycle'},
     {'value': 'Other', 'label': 'Other'},
   ];
-
   final List<Map<String, String>> _genderOptions = [
     {'value': 'Male', 'label': 'Male'},
     {'value': 'Female', 'label': 'Female'},
     {'value': 'Other', 'label': 'Other'},
   ];
 
+  // ─── Step meta ────────────────────────────────────────────────────────────
+  static const _stepTitles = ['Identification', 'Personal Details', 'Entry Details'];
+  static const _stepIcons = [Icons.credit_card_rounded, Icons.person_rounded, Icons.login_rounded];
+
+  // =========================================================================
+  // Life-cycle
+  // =========================================================================
+
   @override
   void initState() {
     super.initState();
     _idNumberController.addListener(_debouncedCheckExistingVisitor);
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      _loadInitialData();
+      _loadInitialDataInBackground();
     });
     _updateFormProgress();
   }
@@ -130,88 +196,76 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
   @override
   void dispose() {
     _idNumberController.removeListener(_debouncedCheckExistingVisitor);
-    _idNumberController.dispose();
-    _nameController.dispose();
-    _phoneController.dispose();
-    _guardianPhoneController.dispose();
-    _countryController.dispose();
-    _hostNameController.dispose();
-    _hostPhoneController.dispose();
-    _hostEmailController.dispose();
-    _hostDepartmentController.dispose();
-    _hostPositionController.dispose();
-    _officeNameController.dispose();
-    _officePhoneController.dispose();
-    _officeEmailController.dispose();
-    _officeDepartmentController.dispose();
-    _officeContactPersonController.dispose();
-    _appointmentDetailsController.dispose();
-    _vehicleTypeController.dispose();
-    _vehicleRegController.dispose();
+    for (final c in [
+      _idNumberController, _nameController, _phoneController,
+      _guardianPhoneController, _countryController, _hostNameController,
+      _hostPhoneController, _hostEmailController, _hostDepartmentController,
+      _hostPositionController, _officeNameController, _officePhoneController,
+      _officeEmailController, _officeDepartmentController,
+      _officeContactPersonController, _appointmentDetailsController,
+      _vehicleTypeController, _vehicleRegController,
+    ]) {
+      c.dispose();
+    }
     _debounceTimer?.cancel();
     super.dispose();
   }
 
+  // =========================================================================
+  // Progress
+  // =========================================================================
+
   void _updateFormProgress() {
-    int totalFields = 11; // Adjusted for required fields
-    int filledFields = 0;
-
-    if (_idNumberController.text.isNotEmpty) filledFields++;
-    if (_nameController.text.isNotEmpty) filledFields++;
-    if (_phoneController.text.isNotEmpty) filledFields++;
-    if (_selectedGender != null) filledFields++;
-    if (_countryController.text.isNotEmpty) filledFields++;
-    if (_selectedDestinationId != null) filledFields++;
-    if (_selectedVisitorTagId != null) filledFields++;
-    if (_selectedGate != null) filledFields++;
-    // Vehicle fields are optional, so they don't contribute to required fields
-    if (_showVisitDetails && _hadAppointment != null) filledFields++;
-    if (_showVisitDetails && _visitType == 'staff' && _hostNameController.text.isNotEmpty) filledFields++;
-    else if (_showVisitDetails && _visitType == 'office' && _officeNameController.text.isNotEmpty) filledFields++;
-
-    setState(() {
-      _formProgress = filledFields / totalFields;
-    });
+    const total = 11;
+    int filled = 0;
+    if (_idNumberController.text.isNotEmpty) filled++;
+    if (_nameController.text.isNotEmpty) filled++;
+    if (_phoneController.text.isNotEmpty) filled++;
+    if (_selectedGender != null) filled++;
+    if (_countryController.text.isNotEmpty) filled++;
+    if (_selectedDestinationId != null) filled++;
+    if (_selectedVisitorTagId != null) filled++;
+    if (_selectedGate != null) filled++;
+    if (_showVisitDetails && _hadAppointment != null) filled++;
+    if (_showVisitDetails && _visitType == 'staff' && _hostNameController.text.isNotEmpty) filled++;
+    else if (_showVisitDetails && _visitType == 'office' && _officeNameController.text.isNotEmpty) filled++;
+    if (mounted) setState(() => _formProgress = filled / total);
   }
 
-  void _debouncedCheckExistingVisitor() {
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 1000), () {
-      if (mounted) {
-        _checkExistingVisitor();
-      }
-    });
-  }
+  // =========================================================================
+  // Data loading
+  // =========================================================================
 
-  Future<void> _loadInitialData() async {
+  Future<void> _loadInitialDataInBackground() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
+    debugPrint('🔄 _loadInitialDataInBackground STARTED');
+    
     try {
-      await _loadTokenFromPreferences();
-      await _fetchAvailableTags();
-      final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
-      await visitorProvider.loadDestinations();
-      await visitorProvider.loadVisitorTags();
-      await visitorProvider.loadCheckedInVisitors();
-    } catch (e) {
-      _showErrorDialog('Failed to load initial data: $e');
-      debugPrint('❌ Error loading initial data: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
+      final vp = Provider.of<VisitorProvider>(context, listen: false);
 
-  Future<void> _clearPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-    setState(() {
-      _token = null;
-      _authToken = null;
-      gateId = null;
-      deviceGate = null;
-    });
+      await _loadTokenFromPreferences();
+      debugPrint('✅ Token loaded, gateId: $gateId');
+
+      await Future.wait([
+        vp.loadDestinations(),
+        vp.loadVisitorTags(),
+        vp.loadCheckedInVisitors(),
+      ]);
+
+      await _fetchAvailableTagsInBackground();
+
+      // Set default entry gate if not already set
+      if (_selectedGate == null) {
+        final defaultGate = gateId ?? vp.gateId?.toString();
+        if (defaultGate != null) {
+          setState(() => _selectedGate = defaultGate);
+        }
+      }
+
+      debugPrint('✅ All background data loaded, tags count: ${_availableTags.length}');
+    } catch (e) {
+      debugPrint('⚠️ Background load failed: $e');
+    }
   }
 
   Future<void> _loadTokenFromPreferences() async {
@@ -223,1401 +277,1294 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
         deviceGate = prefs.getString('device_gate') ?? 'Gate A';
         _authToken = _token;
       });
+      debugPrint('📱 Token loaded: ${_token != null ? "Yes (${_token!.substring(0, 20)}...)" : "No"}');
+      debugPrint('📱 Gate ID: $gateId');
+      
       if (_token == null || gateId == null) {
         await _clearPreferences();
-        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
         return;
       }
-      debugPrint(_token != null ? '✅ Loaded auth token: ${_token!.substring(0, 10)}...' : '⚠️ No auth token found');
-      debugPrint(gateId != null ? '✅ Loaded gateId: $gateId' : '⚠️ No gateId found');
-      debugPrint('📴 Loaded cached gate: $deviceGate');
-      if (_token != null && gateId != null && deviceGate != null) {
-        final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
-        visitorProvider.setAuthData(_token!, gateId!, deviceGate!);
+      if (_token != null && gateId != null && deviceGate != null && mounted) {
+        Provider.of<VisitorProvider>(context, listen: false)
+            .setAuthData(_token!, gateId!, deviceGate!);
       }
     } catch (e) {
-      debugPrint('❌ Error loading token from SharedPreferences: $e');
+      debugPrint('❌ Error loading token: $e');
       await _clearPreferences();
-      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
     }
   }
 
-  Future<void> _checkExistingVisitor() async {
-    if (!mounted) return;
-    final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
+  Future<void> _clearPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    if (mounted) setState(() {
+      _token = null;
+      _authToken = null;
+      gateId = null;
+      deviceGate = null;
+    });
+  }
+
+  // =========================================================================
+  // Visitor lookup
+  // =========================================================================
+
+  void _debouncedCheckExistingVisitor() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 800), () {
+      if (_idNumberController.text.trim().isNotEmpty && mounted) {
+        _checkExistingVisitorInBackground();
+      }
+    });
+  }
+
+  Future<void> _checkExistingVisitorInBackground() async {
     final idNumber = _idNumberController.text.trim();
-    debugPrint('Checking visitor ID: $idNumber, Type: $_selectedIdType');
-    if (idNumber.isEmpty) {
-      if (mounted) {
+    if (idNumber.isEmpty) return;
+    final vp = Provider.of<VisitorProvider>(context, listen: false);
+    final error = vp.validateIdNumber(idNumber, _selectedIdType);
+    if (error != null) {
+      if (mounted) setState(() => _idValidationError = error);
+      return;
+    }
+    if (mounted) setState(() => _isBackgroundChecking = true);
+    try {
+      final response = await vp.checkExistingVisitor(idNumber, _selectedIdType);
+      if (!mounted) return;
+      setState(() => _isBackgroundChecking = false);
+      if (response != null &&
+          (response['exists'] == true || response['exists'] == 'true') &&
+          response['visitor'] != null) {
+        _autoFillVisitorData(response['visitor']);
+        _showSubtleNotification('Returning Visitor', 'Information auto-filled');
+      } else {
         setState(() => _idValidationError = null);
       }
-      debugPrint('ID is empty, skipping check');
-      return;
-    }
-    final error = visitorProvider.validateIdNumber(idNumber, _selectedIdType);
-    if (error != null) {
-      if (mounted) {
-        setState(() => _idValidationError = error);
-      }
-      debugPrint('Validation error: $error');
-      return;
-    }
-
-    try {
-      setState(() => _isLoading = true);
-      final response = await visitorProvider.checkExistingVisitor(idNumber, _selectedIdType);
-      debugPrint('Check visitor response: ${jsonEncode(response)}');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          if (response != null && (response['exists'] == true || response['exists'] == 'true') && response['visitor'] != null) {
-            final visitorData = response['visitor'] as Map<String, dynamic>;
-            final visitorStatus = response['visitorStatus']?.toString() ?? 'unknown';
-            debugPrint('Visitor status: isCheckedIn=${response['alreadyCheckedIn']}, visitorStatus=$visitorStatus');
-            if (response['alreadyCheckedIn'] == true) {
-              _idValidationError = 'Visitor is currently active at this gate';
-              _showExistingVisitorDialog(visitorData, visitorStatus: visitorStatus);
-            } else {
-              _idValidationError = null;
-              _showExistingVisitorDialog(visitorData, visitorStatus: visitorStatus);
-            }
-          } else {
-            _idValidationError = null;
-            debugPrint('No existing visitor found for ID $idNumber');
-            if (_idFormKey.currentState?.validate() ?? false) {
-              _currentStep += 1;
-            }
-          }
-        });
-      }
     } catch (e) {
-      debugPrint('Error checking existing visitor: $e');
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-          if (e.toString().contains('404')) {
-            _idValidationError = null;
-            debugPrint('No visitor found for ID $idNumber');
-            if (_idFormKey.currentState?.validate() ?? false) {
-              _currentStep += 1;
-            }
-          } else if (e.toString().contains('401')) {
-            _idValidationError = 'Session expired. Please log in again.';
-            Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-          } else if (e.toString().contains('422')) {
-            Future.delayed(Duration(seconds: 2), () {
-              if (mounted) _checkExistingVisitor();
-            });
-            _idValidationError = 'Validation error, retrying...';
-          } else {
-            _idValidationError = 'Error checking ID: $e';
-          }
-        });
+        setState(() => _isBackgroundChecking = false);
+        if (!e.toString().contains('404')) {
+          _showSubtleNotification('Check Failed', 'Will retry automatically', isError: true);
+        } else {
+          setState(() => _idValidationError = null);
+        }
       }
     }
   }
 
-  Future<void> _fetchAvailableTags() async {
-    final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
+  void _autoFillVisitorData(Map<String, dynamic> d) {
+    if (!mounted) return;
+    setState(() {
+      if (d['name'] != null && _nameController.text.isEmpty) _nameController.text = d['name'].toString();
+      if (d['phone_number'] != null && _phoneController.text.isEmpty) _phoneController.text = d['phone_number'].toString().replaceFirst('+254', '');
+      if (d['gender'] != null && _selectedGender == null) _selectedGender = d['gender'].toString();
+      if (d['country'] != null && _countryController.text == 'Kenya') _countryController.text = d['country'].toString();
+      if (d['is_minor'] != null) _isMinor = d['is_minor'] == true;
+      if (d['guardian_phone'] != null && _isMinor) _guardianPhoneController.text = d['guardian_phone'].toString().replaceFirst('+254', '');
+    });
+    _updateFormProgress();
+  }
+
+  // =========================================================================
+  // Tags
+  // =========================================================================
+
+  Future<void> _fetchAvailableTagsInBackground() async {
+    debugPrint('🔍 ===== FETCHING AVAILABLE TAGS =====');
+    
+    final vp = Provider.of<VisitorProvider>(context, listen: false);
+    
     try {
-      final token = _authToken ?? visitorProvider.token;
-      if (token == null || gateId == null) {
-        debugPrint('⚠️ Cannot fetch tags: No token or gate ID');
-        throw VisitorAuthException('No authentication token or gate ID');
+      final token = _authToken ?? vp.token;
+      final currentGateId = gateId ?? vp.gateId;
+      
+      debugPrint('🔍 Token: ${token != null ? "Present (${token.substring(0, 20)}...)" : "NULL"}');
+      debugPrint('🔍 Current GateId: $currentGateId');
+      
+      if (token == null || currentGateId == null) {
+        debugPrint('⚠️ Cannot fetch tags - missing token or gateId');
+        if (mounted) {
+          _showSubtleNotification('Error', 'Missing authentication', isError: true);
+        }
+        return;
       }
-      debugPrint('📥 Fetch tags with token: ${token.substring(0, 10)}...');
+      
+      final url = '${AppStrings.apiBaseUrl}/api/visitor-tags?unassigned=true&gate_id=$currentGateId';
+      debugPrint('📡 Making API call to: $url');
+      
       final response = await http.get(
-        Uri.parse('${AppStrings.apiBaseUrl}/api/visitor-tags?unassigned=true&gate_id=$gateId'),
+        Uri.parse(url),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
       );
-      debugPrint('📥 Fetch tags response: ${response.statusCode} - ${response.body}');
-      if (response.statusCode == 200) {
+      
+      debugPrint('📥 Response status: ${response.statusCode}');
+      debugPrint('📥 Response body: ${response.body}');
+      
+      if (response.statusCode == 200 && mounted) {
         final data = jsonDecode(response.body);
-        if (mounted) {
-          setState(() {
-            _availableTags = List<Map<String, dynamic>>.from(data['tags'])
-                .where((tag) => tag['is_assigned'] == false)
-                .map((tag) {
-                  if (tag['tag_number'] == null || tag['tag_number'].toString().isEmpty) {
-                    tag['tag_number'] = 'Tag ${tag['id'] ?? 'Unknown'}';
-                  }
-                  return tag;
-                }).toList();
-            _selectedVisitorTagId = _availableTags.isNotEmpty ? _availableTags.first['id']?.toString() : null;
-          });
+        
+        List<dynamic> tagsList = [];
+        if (data['tags'] != null && data['tags'] is List) {
+          tagsList = data['tags'];
+          debugPrint('✅ Found tags in "tags" field: ${tagsList.length}');
+        } else if (data['data'] != null && data['data'] is List) {
+          tagsList = data['data'];
+          debugPrint('✅ Found tags in "data" field: ${tagsList.length}');
+        } else if (data is List) {
+          tagsList = data;
+          debugPrint('✅ Response is a list: ${tagsList.length}');
         }
-      } else if (response.statusCode == 401) {
-        _showErrorDialog('Session expired. Please log in again.');
-        if (mounted) {
-          Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        
+        final unassignedTags = tagsList
+            .where((t) => t['is_assigned'] == false || t['is_assigned'] == 'false')
+            .map((t) {
+              if (t['tag_number'] == null || t['tag_number'].toString().isEmpty) {
+                t['tag_number'] = 'Tag ${t['id'] ?? 'Unknown'}';
+              }
+              return Map<String, dynamic>.from(t);
+            }).toList();
+        
+        debugPrint('🎫 Found ${unassignedTags.length} unassigned tags');
+        
+        setState(() {
+          _availableTags = unassignedTags;
+          if (_availableTags.isNotEmpty && _selectedVisitorTagId == null) {
+            _selectedVisitorTagId = _availableTags.first['id']?.toString();
+            debugPrint('🎫 Auto-selected tag ID: $_selectedVisitorTagId');
+          }
+        });
+        
+        if (unassignedTags.isEmpty && mounted) {
+          _showSubtleNotification('No Tags', 'No unassigned tags available', isError: true);
+        } else if (unassignedTags.isNotEmpty && mounted) {
+          _showSubtleNotification('Tags Loaded', 'Found ${unassignedTags.length} tags');
         }
-      } else {
-        throw VisitorNetworkException('Failed to load tags: ${response.statusCode}');
+      } else if (response.statusCode == 401 && mounted) {
+        debugPrint('🔐 Authentication failed');
+        _showSubtleNotification('Session Expired', 'Please login again', isError: true);
+      } else if (mounted) {
+        debugPrint('❌ Failed to fetch tags: ${response.statusCode}');
+        _showSubtleNotification('Error', 'Failed to load tags', isError: true);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ Error fetching tags: $e');
-      Future.delayed(Duration(seconds: 2), () {
-        if (mounted) _fetchAvailableTags();
-      });
-      _showErrorDialog('Error fetching tags, retrying...');
+      debugPrint('📚 Stack trace: $stackTrace');
+      if (mounted) {
+        _showSubtleNotification('Error', 'Failed to load tags: $e', isError: true);
+      }
     }
+    
+    debugPrint('🔍 ===== TAG FETCH COMPLETED =====');
   }
 
-  Future<void> _refreshData() async {
-    if (_token == null || gateId == null) {
-      debugPrint('⚠️ token or gateId is null, cannot refresh data');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Authentication token or gate information missing'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
-        if (_token == null) {
-          Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-        }
-      }
-      return;
-    }
-
-    if (!mounted) return;
-
-    setState(() => _isRefreshing = true);
-    final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
+  Future<void> _silentRefresh() async {
+    if (_token == null || gateId == null || !mounted) return;
+    setState(() => _isBackgroundFetching = true);
+    final vp = Provider.of<VisitorProvider>(context, listen: false);
     try {
       await Future.wait([
-        _fetchAvailableTags(),
-        visitorProvider.loadDestinations(),
-        visitorProvider.loadVisitorTags(),
-        visitorProvider.loadCheckedInVisitors(),
-        visitorProvider.logVisitCount(),
+        _fetchAvailableTagsInBackground(),
+        vp.loadDestinations(),
+        vp.loadVisitorTags(),
+        vp.loadCheckedInVisitors(),
       ]);
-
       if (mounted) {
-        setState(() => _isRefreshing = false);
+        setState(() => _isBackgroundFetching = false);
+        _showSubtleNotification('Refreshed', 'Latest data loaded');
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isRefreshing = false);
-        _showErrorDialog('Failed to refresh data: $e');
-        debugPrint('❌ Error refreshing data: $e');
-      }
+      if (mounted) setState(() => _isBackgroundFetching = false);
     }
   }
+
+  // =========================================================================
+  // ID scanning
+  // =========================================================================
 
   Future<void> _scanID() async {
     try {
       setState(() => _isScanning = true);
-      final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(source: ImageSource.camera);
-
+      final XFile? image = await ImagePicker().pickImage(source: ImageSource.camera);
       if (image == null) {
         if (mounted) {
           setState(() => _isScanning = false);
-          _showErrorDialog('No image captured.');
+          _showSubtleNotification('Cancelled', 'No image captured', isError: true);
         }
         return;
       }
-
-      final inputImage = InputImage.fromFilePath(image.path);
-      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
-      String extractedText = recognizedText.text;
-      await textRecognizer.close();
-
-      debugPrint('📷 Extracted text: $extractedText');
-
-      String? idNumber;
-      String? name;
-      String? gender;
-      String? country;
-
-      const countryNames = [
-        'Kenya', 'United States', 'United Kingdom', 'Canada', 'Australia', 'India',
-        'Germany', 'France', 'Brazil', 'China', 'Japan', 'South Africa', 'Nigeria',
-        'Ghana', 'Ethiopia',
-      ];
-
-      Map<String, Map<String, String>> idTypePatterns = {
-        'national_id': {
-          'label': r'^(ID Number|National ID|Identity Number|1D Number)\b',
-          'value': r'^\d{7,9}$',
-        },
-        'passport_number': {
-          'label': r'^(Passport Number|Passport No\.?|Passport)\b',
-          'value': r'^[A-Za-z0-9]{6,12}$',
-        },
-        'driving_licence': {
-          'label': r'^(DL Number|Driving Licence No\.?|Driving License Number|Licence No)\b',
-          'value': r'^[A-Za-z0-9-]{6,}$',
-        },
-        'birth_certificate_number': {
-          'label': r'^(Birth Certificate Number|Certificate No\.?|Birth Cert No)\b',
-          'value': r'^[A-Za-z0-9-]{6,}$',
-        },
-      };
-
-      final idPatterns = idTypePatterns[_selectedIdType] ?? idTypePatterns['national_id']!;
-      final lines = extractedText.split('\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toList();
-
-      bool isNameField = false;
-      bool isSexField = false;
-      bool isIdField = false;
-
-      for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].toLowerCase();
-
-        if (RegExp(idPatterns['label']!, caseSensitive: false).hasMatch(line)) {
-          isIdField = true;
-          if (i + 1 < lines.length) {
-            var potentialId = lines[i + 1].trim();
-            if (RegExp(idPatterns['value']!).hasMatch(potentialId)) {
-              idNumber = potentialId;
-            }
-          }
-          continue;
-        } else if (_selectedIdType != 'national_id' && idNumber == null && RegExp(idPatterns['value']!).hasMatch(line)) {
-          idNumber = line;
-        }
-
-        if (_selectedIdType == 'national_id' && RegExp(r'^(id number|id no\.?)\b', caseSensitive: false).hasMatch(line)) {
-          isIdField = false;
-          continue;
-        }
-
-        if (RegExp(r'^(name|names|full name|full names|surname|given name(s)?)\b', caseSensitive: false).hasMatch(line)) {
-          isNameField = true;
-          if (i + 1 < lines.length) {
-            name = lines[i + 1].trim();
-            if (!RegExp(r"^[A-Za-z\s-']+$").hasMatch(name) || name.split(' ').length < 2) {
-              name = null;
-            }
-          }
-          continue;
-        } else if (name == null && RegExp(r"^[A-Za-z\s-']+$").hasMatch(line) && line.split(' ').length >= 2) {
-          name = line;
-        }
-
-        if (RegExp(r'^(sex|gender)\b', caseSensitive: false).hasMatch(line)) {
-          isSexField = true;
-          if (i + 1 < lines.length) {
-            var sexValue = lines[i + 1].trim().toUpperCase();
-            if (sexValue.contains('M') || sexValue.contains('MALE')) {
-              gender = 'Male';
-            } else if (sexValue.contains('F') || sexValue.contains('FEMALE')) {
-              gender = 'Female';
-            } else {
-              gender = 'Other';
-            }
-          }
-          continue;
-        } else if (gender == null && RegExp(r'^(MALE|FEMALE|M|F|OTHER)$', caseSensitive: false).hasMatch(line)) {
-          var sexValue = line.toUpperCase();
-          if (sexValue.contains('M') || sexValue.contains('MALE')) {
-            gender = 'Male';
-          } else if (sexValue.contains('F') || sexValue.contains('FEMALE')) {
-            gender = 'Female';
-          } else {
-            gender = 'Other';
-          }
-        }
-
-        if (country == null) {
-          for (var countryName in countryNames) {
-            if (line.contains(countryName.toLowerCase()) || _isFuzzyMatch(line, countryName.toLowerCase())) {
-              country = countryName;
-              break;
-            }
-          }
-          if (line.contains('jamhuri ya kenya') || line.contains('republic of kenya')) {
-            country = 'Kenya';
-          }
-        }
-
-        if (isNameField || isSexField || isIdField) {
-          isNameField = false;
-          isSexField = false;
-          isIdField = false;
-        }
-      }
-
-      if (name != null) {
-        name = name.split(' ').map((word) => word.isNotEmpty ? '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}' : '').join(' ').trim();
-        final nameValidationResult = Validators.validateName(name);
-        if (nameValidationResult != null && nameValidationResult.isNotEmpty) {
-          name = null;
-        }
-      }
-
-      if (idNumber != null) {
-        final idValidationResult = Provider.of<VisitorProvider>(context, listen: false).validateIdNumber(idNumber, _selectedIdType);
-        if (idValidationResult != null) {
-          idNumber = null;
-        }
-      }
-
-      if (idNumber == null) {
-        if (mounted) {
-          setState(() => _isScanning = false);
-          _showErrorDialog('Could not extract ID number. Please verify the image or enter manually.');
-        }
-        return;
-      }
-
+      _showSubtleNotification('Processing', 'Scanning ID document…');
+      final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final recognized = await recognizer.processImage(InputImage.fromFilePath(image.path));
+      await recognizer.close();
+      final extracted = _extractIdData(recognized.text);
       if (mounted) {
         setState(() {
-          _idNumberController.text = idNumber ?? '';
-          if (name != null) _nameController.text = name;
-          if (country != null) _countryController.text = country;
-          if (gender != null) _selectedGender = gender;
-          _isMinor = _selectedIdType == 'birth_certificate_number';
           _isScanning = false;
+          if (extracted['idNumber']?.isNotEmpty ?? false) {
+            _idNumberController.text = extracted['idNumber']!;
+            if (extracted['name']?.isNotEmpty ?? false) _nameController.text = extracted['name']!;
+            if (extracted['gender'] != null) _selectedGender = extracted['gender'];
+            if (extracted['country']?.isNotEmpty ?? false) _countryController.text = extracted['country']!;
+          }
         });
         _updateFormProgress();
-      }
-
-      final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
-      final response = await visitorProvider.checkExistingVisitor(idNumber, _selectedIdType);
-      if (response != null && (response['exists'] == true || response['exists'] == 'true') && response['visitor'] != null && mounted) {
-        final existingVisitor = response['visitor'] as Map<String, dynamic>;
-        final visitorStatus = response['visitorStatus']?.toString() ?? 'unknown';
-        _showExistingVisitorDialog(existingVisitor, visitorStatus: visitorStatus);
-      } else if (name != null && gender != null && country != null) {
-        bool? confirmed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('Confirm Extracted Data', style: GoogleFonts.afacad(fontWeight: FontWeight.bold)),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('ID Number: $idNumber', style: GoogleFonts.afacad()),
-                  Text('Full Name: $name', style: GoogleFonts.afacad()),
-                  Text('Gender: $gender', style: GoogleFonts.afacad()),
-                  Text('Country: $country', style: GoogleFonts.afacad()),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text('Edit', style: GoogleFonts.afacad()),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text('Confirm', style: GoogleFonts.afacad()),
-              ),
-            ],
-          ),
-        );
-
-        if (confirmed != true && mounted) {
-          setState(() {
-            _idNumberController.clear();
-            _nameController.clear();
-            _countryController.text = 'Kenya';
-            _selectedGender = null;
-            _idValidationError = null;
-          });
-          _updateFormProgress();
-        } else if (mounted && _idFormKey.currentState != null && _idFormKey.currentState!.validate()) {
-          setState(() => _currentStep += 1);
-        }
-      } else {
-        final missingFields = [if (name == null) 'full name', if (gender == null) 'gender', if (country == null) 'country'].join(', ');
-        if (mounted) {
-          _showErrorDialog('Could not extract $missingFields. Please verify the image or enter manually.');
+        if (extracted['idNumber']?.isNotEmpty ?? false) {
+          _showSubtleNotification('Success', 'ID scanned successfully');
+          _checkExistingVisitorInBackground();
+        } else {
+          _showSubtleNotification('Scan Failed', 'Could not extract ID number', isError: true);
         }
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       if (mounted) {
         setState(() => _isScanning = false);
-        _showErrorDialog('Scanning failed: $e');
+        _showSubtleNotification('Error', 'Scanning failed: $e', isError: true);
       }
-      debugPrint('❌ Error during scanning: $e\n$stackTrace');
     }
   }
 
-  bool _isFuzzyMatch(String input, String pattern) {
-    input = input.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
-    pattern = pattern.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
-    int differences = 0;
-    if (input.length < pattern.length || input.length > pattern.length + 3) {
-      return false;
+  Map<String, String?> _extractIdData(String text) {
+    String? idNumber, name, gender, country;
+    const countries = ['Kenya', 'United States', 'United Kingdom', 'Canada', 'Australia', 'India', 'Germany', 'France', 'Brazil', 'China', 'Japan', 'South Africa', 'Nigeria', 'Ghana', 'Ethiopia'];
+    final patterns = {
+      'national_id': {'label': r'^(ID NUMBER|National ID|Identity Number|ID Number)\b', 'value': r'^\d{7,9}$'},
+      'passport_number': {'label': r'^(Passport Number|Passport No\.?|Passport)\b', 'value': r'^[A-Za-z0-9]{6,12}$'},
+      'driving_licence': {'label': r'^(DL Number|Driving Licence No\.?|Driving License Number|Licence No)\b', 'value': r'^[A-Za-z0-9-]{6,}$'},
+      'birth_certificate_number': {'label': r'^(Birth Certificate Number|Certificate No\.?|Birth Cert No)\b', 'value': r'^[A-Za-z0-9-]{6,}$'},
+    };
+    final p = patterns[_selectedIdType] ?? patterns['national_id']!;
+    final lines = text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      if (RegExp(p['label']!, caseSensitive: false).hasMatch(line)) {
+        if (i + 1 < lines.length && RegExp(p['value']!).hasMatch(lines[i + 1].trim())) idNumber = lines[i + 1].trim();
+        continue;
+      } else if (idNumber == null && RegExp(p['value']!).hasMatch(line)) {
+        idNumber = line;
+      }
+      if (RegExp(r'^(name|names|full name|full names|surname|given name(s)?)\b', caseSensitive: false).hasMatch(line)) {
+        if (i + 1 < lines.length) {
+          final n = lines[i + 1].trim();
+          if (RegExp(r"^[A-Za-z\s-']+$").hasMatch(n) && n.split(' ').length >= 2) name = n;
+        }
+        continue;
+      } else if (name == null && RegExp(r"^[A-Za-z\s-']+$").hasMatch(line) && line.split(' ').length >= 2) {
+        name = line;
+      }
+      if (RegExp(r'^(sex|gender)\b', caseSensitive: false).hasMatch(line)) {
+        if (i + 1 < lines.length) {
+          final s = lines[i + 1].trim().toUpperCase();
+          gender = s.contains('F') ? 'Female' : s.contains('M') ? 'Male' : 'Other';
+        }
+        continue;
+      } else if (gender == null && RegExp(r'^(MALE|FEMALE|M|F|OTHER)$', caseSensitive: false).hasMatch(line)) {
+        final s = line.toUpperCase();
+        gender = s.contains('F') ? 'Female' : s.contains('M') ? 'Male' : 'Other';
+      }
+      if (country == null) {
+        for (final c in countries) {
+          if (line.toLowerCase().contains(c.toLowerCase())) {
+            country = c;
+            break;
+          }
+        }
+        if (line.toLowerCase().contains('jamhuri ya kenya') || line.toLowerCase().contains('republic of kenya')) country = 'Kenya';
+      }
     }
-    for (int i = 0; i < input.length && i < pattern.length; i++) {
-      if (input[i] != pattern[i]) differences++;
-      if (differences > 2) return false;
-    }
-    return true;
+    return {'idNumber': idNumber, 'name': name, 'gender': gender, 'country': country};
   }
 
-  void _showErrorDialog(String message) {
-    if (mounted) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Error', style: GoogleFonts.afacad(fontWeight: FontWeight.bold)),
-          content: Text(message, style: GoogleFonts.afacad()),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('OK', style: GoogleFonts.afacad()),
+  // =========================================================================
+  // Notification
+  // =========================================================================
+
+  void _showSubtleNotification(String title, String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Row(
+        children: [
+          Icon(isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
+          Expanded(child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, fontFamily: 'BrandonGrotesque')),
+              Text(message, style: const TextStyle(fontSize: 12, fontFamily: 'BrandonGrotesque')),
+            ],
+          )),
+        ],
+      ),
+      backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF2E7D32),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+    ));
+  }
+
+  // =========================================================================
+  // UI Helpers (Square borders - BorderRadius.zero)
+  // =========================================================================
+
+  Widget _sectionHeader(String title, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppColors.primaryBlue, AppColors.primaryBlue.withOpacity(0.8)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.zero, // Square corners
             ),
-          ],
-        ),
-      );
-    }
-  }
-
-  void _showExistingVisitorDialog(Map<String, dynamic> visitorData, {required String visitorStatus}) {
-    if (mounted) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Existing Visitor Found', style: GoogleFonts.afacad(fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('ID: ${visitorData['identification_number']?.toString() ?? 'Unknown'}', style: GoogleFonts.afacad()),
-                Text('Name: ${visitorData['name']?.toString() ?? 'Not provided'}', style: GoogleFonts.afacad()),
-                Text('Phone: ${visitorData['phone_number']?.toString() ?? 'Not provided'}', style: GoogleFonts.afacad()),
-                Text(
-                  'Status: ${visitorStatus == 'active' ? 'Active (Checked In)' : visitorStatus == 'completed' ? 'Completed (Checked Out)' : 'Unknown'}',
-                  style: GoogleFonts.afacad(),
-                ),
-                if (visitorData['tag'] != null)
-                  Text(
-                    'Tag: ${(visitorData['tag']['tag_number']?.toString().isNotEmpty ?? false) ? visitorData['tag']['tag_number'] : 'Tag ${visitorData['tag']['id'] ?? 'Unknown'}'}',
-                    style: GoogleFonts.afacad(),
-                  ),
-                Text(
-                  visitorStatus == 'active'
-                      ? 'This visitor is currently active at this gate.'
-                      : 'This visitor has been registered before. Would you like to create a new visit or start a new registration?',
-                  style: GoogleFonts.afacad(),
-                ),
-              ],
+            child: Icon(icon, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'BrandonGrotesque',
+              color: AppColors.primaryBlue,
+              letterSpacing: 0.5,
             ),
           ),
-          actions: [
-            if (visitorStatus != 'active') ...[
-              TextButton(
-                onPressed: () {
-                  if (mounted) {
-                    setState(() {
-                      _nameController.text = visitorData['name']?.toString() ?? '';
-                      _phoneController.text = visitorData['phone_number']?.toString().replaceFirst('+254', '') ?? '';
-                      _countryController.text = visitorData['country']?.toString() ?? 'Kenya';
-                      _selectedGender = visitorData['gender']?.toString();
-                      _isMinor = visitorData['is_minor'] == true;
-                      if (_isMinor) {
-                        _guardianPhoneController.text = visitorData['guardian_phone']?.toString().replaceFirst('+254', '') ?? '';
-                      }
-                      _idValidationError = null;
-                      _currentStep = 1; // Move to personal details step
-                    });
-                    _updateFormProgress();
-                    Navigator.of(context).pop();
-                  }
-                },
-                child: Text('Create New Visit', style: GoogleFonts.afacad()),
-              ),
-              TextButton(
-                onPressed: () {
-                  if (mounted) {
-                    setState(() {
-                      _idValidationError = null;
-                      _nameController.clear();
-                      _phoneController.clear();
-                      _guardianPhoneController.clear();
-                      _countryController.text = 'Kenya';
-                      _selectedGender = null;
-                      _isMinor = false;
-                      _idNumberController.clear();
-                      _selectedIdType = 'national_id';
-                    });
-                    Navigator.of(context).pop();
-                  }
-                },
-                child: Text('Register New', style: GoogleFonts.afacad()),
-              ),
-            ],
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cancel', style: GoogleFonts.afacad()),
-            ),
-          ],
-        ),
-      );
-    }
+        ],
+      ),
+    );
   }
 
-  InputDecoration _buildInputDecoration(String label, IconData icon, {bool isRequired = true, bool solo = false}) {
+  InputDecoration _inputDecoration(String label, IconData icon, {bool required = true}) {
     return InputDecoration(
-      labelText: '$label${isRequired ? ' *' : ''}',
-      labelStyle: GoogleFonts.afacad(color: isRequired ? AppColors.primaryBlue : Colors.grey.shade600),
+      labelText: required ? '$label *' : label,
+      labelStyle: TextStyle(
+        fontFamily: 'BrandonGrotesque',
+        fontSize: 14,
+        color: Colors.grey.shade600,
+        fontWeight: FontWeight.w500,
+      ),
       hintText: 'Enter $label',
-      hintStyle: GoogleFonts.afacad(color: Colors.grey.shade400),
-      prefixIcon: solo ? null : Icon(icon, color: AppColors.primaryBlue),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade200),
+      hintStyle: TextStyle(
+        fontFamily: 'BrandonGrotesque',
+        color: Colors.grey.shade400,
+        fontSize: 14,
       ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade200),
-      ),
+      prefixIcon: Icon(icon, color: AppColors.primaryBlue, size: 22),
+      border: const OutlineInputBorder(borderRadius: BorderRadius.zero),
+      enabledBorder: const OutlineInputBorder(borderRadius: BorderRadius.zero),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.zero,
         borderSide: BorderSide(color: AppColors.primaryBlue, width: 2),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.zero,
         borderSide: BorderSide(color: AppColors.error),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.zero,
         borderSide: BorderSide(color: AppColors.error, width: 2),
       ),
       filled: true,
       fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-      errorStyle: GoogleFonts.afacad(color: AppColors.error, fontSize: 12),
     );
   }
 
-  Widget _buildSectionHeader(String title, IconData icon, {bool showScanButton = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 2,
-            blurRadius: 5,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: AppColors.primaryBlue, size: 24),
-          const SizedBox(width: 12),
-          Text(
-            title,
-            style: GoogleFonts.afacad(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: AppColors.primaryBlue,
+  Widget _spacer([double h = 12]) => SizedBox(height: h);
+
+  // =========================================================================
+  // Step 1 – Identification
+  // =========================================================================
+
+  Widget _buildIdentificationStep() => FadeInUp(
+    duration: const Duration(milliseconds: 350),
+    child: Form(
+      key: _idFormKey,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionHeader('Identification', Icons.credit_card),
+            _spacer(),
+            DropdownButtonFormField<String>(
+              value: _selectedIdType,
+              decoration: _inputDecoration('ID Type', Icons.badge),
+              items: _idTypeOptions.map((o) => DropdownMenuItem(
+                value: o['value'],
+                child: Text(o['label']!, style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14)),
+              )).toList(),
+              onChanged: (v) {
+                if (mounted) setState(() {
+                  _selectedIdType = v!;
+                  _isMinor = v == 'birth_certificate_number';
+                  _idNumberController.clear();
+                  _nameController.clear();
+                  _countryController.text = 'Kenya';
+                  _selectedGender = null;
+                  _idValidationError = null;
+                });
+                _updateFormProgress();
+              },
+              validator: (v) => v == null ? 'Please select an ID type' : null,
             ),
-          ),
-          const Spacer(),
-          if (showScanButton)
-            ZoomIn(
-              child: ElevatedButton.icon(
-                onPressed: _isScanning ? null : _scanID,
-                icon: const Icon(Icons.camera_alt, size: 20),
-                label: Text('Scan ID', style: GoogleFonts.afacad(fontSize: 14)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryBlue,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            _spacer(),
+            TextFormField(
+              controller: _idNumberController,
+              decoration: _inputDecoration(_idFieldLabel, _idFieldIcon).copyWith(
+                suffixIcon: IconButton(
+                  icon: Icon(Icons.camera_alt, color: AppColors.primaryBlue),
+                  onPressed: _isScanning ? null : _scanID,
+                  tooltip: 'Scan ID',
                 ),
               ),
+              style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+              validator: (v) {
+                final value = v?.replaceAll(' ', '').trim() ?? '';
+                if (value.isEmpty) {
+                  return 'Please enter your $_idFieldLabel';
+                }
+                return Provider.of<VisitorProvider>(context, listen: false)
+                    .validateIdNumber(value, _selectedIdType);
+              },
+              keyboardType: _idKeyboardType,
+              inputFormatters: _idInputFormatters,
+              onChanged: (_) => _updateFormProgress(),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildIdentificationStep() {
-    return Form(
-      key: _idFormKey,
-      child: FadeInUp(
-        child: Card(
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSectionHeader('Identification Details', Icons.credit_card, showScanButton: _idNumberController.text.isEmpty),
-                const SizedBox(height: 20),
-                if (_isScanning)
-                  Center(
-                    child: Column(
-                      children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(height: 10),
-                        Text('Scanning ID...', style: GoogleFonts.afacad()),
-                      ],
+            if (_idValidationError != null) ...[
+              _spacer(8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withOpacity(0.1),
+                  borderRadius: BorderRadius.zero,
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, size: 16, color: AppColors.error),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _idValidationError!,
+                        style: TextStyle(fontFamily: 'BrandonGrotesque', color: AppColors.error, fontSize: 12),
+                      ),
                     ),
-                  )
-                else ...[
-                  DropdownButtonFormField<String>(
-                    value: _selectedIdType,
-                    decoration: _buildInputDecoration('ID Type', Icons.credit_card, solo: true),
-                    items: _idTypeOptions.map((option) => DropdownMenuItem(value: option['value'], child: Text(option['label']!, style: GoogleFonts.afacad()))).toList(),
-                    onChanged: (value) {
-                      if (mounted) {
-                        setState(() {
-                          _selectedIdType = value!;
-                          _isMinor = value == 'birth_certificate_number';
-                          _idNumberController.clear();
-                          _nameController.clear();
-                          _countryController.text = 'Kenya';
-                          _selectedGender = null;
-                          _idValidationError = null;
-                        });
-                        _updateFormProgress();
-                      }
-                    },
-                    validator: (value) => value == null ? 'Please select an ID type' : null,
+                  ],
+                ),
+              ),
+            ],
+            _spacer(16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.zero,
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.grey.shade500),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Fields marked with * are mandatory',
+                      style: TextStyle(
+                        fontFamily: 'BrandonGrotesque',
+                        color: Colors.grey.shade500,
+                        fontSize: 12,
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _idNumberController,
-                    decoration: _buildInputDecoration('ID Number', Icons.numbers, solo: true).copyWith(
-                      suffixIcon: IconButton(icon: const Icon(Icons.camera_alt), onPressed: _isScanning ? null : _scanID, tooltip: 'Scan ID'),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Please enter an ID number';
-                      }
-                      return Provider.of<VisitorProvider>(context, listen: false).validateIdNumber(value.trim(), _selectedIdType);
-                    },
-                    keyboardType: _selectedIdType == 'national_id' ? TextInputType.number : TextInputType.text,
-                    inputFormatters: [
-                      if (_selectedIdType == 'national_id') FilteringTextInputFormatter.digitsOnly,
-                    ],
-                    onChanged: (value) => _updateFormProgress(),
-                    autofocus: true,
-                  ),
-                  if (_idValidationError != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(_idValidationError!, style: GoogleFonts.afacad(color: AppColors.error, fontSize: 12)),
-                    ),
-                  const SizedBox(height: 16),
-                  Text('Fields marked with * are mandatory', style: GoogleFonts.afacad(color: Colors.grey.shade600, fontSize: 12, fontStyle: FontStyle.italic)),
                 ],
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
 
-  Widget _buildPersonalDetailsStep() {
-    final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
-    return Form(
+  // =========================================================================
+  // Step 2 – Personal Details
+  // =========================================================================
+
+  Widget _buildPersonalDetailsStep() => FadeInUp(
+    duration: const Duration(milliseconds: 350),
+    child: Form(
       key: _personalFormKey,
-      child: FadeInUp(
-        child: Card(
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSectionHeader('Personal Details', Icons.person),
-                const SizedBox(height: 20),
-                TextFormField(
-                  controller: _nameController,
-                  decoration: _buildInputDecoration('Full Name', Icons.person_outline, solo: true),
-                  validator: Validators.validateName,
-                  keyboardType: TextInputType.name,
-                  onChanged: (value) => _updateFormProgress(),
-                  autofocus: true,
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _selectedGender,
-                  decoration: _buildInputDecoration('Gender', Icons.person, solo: true),
-                  items: _genderOptions.map((option) => DropdownMenuItem(value: option['value'], child: Text(option['label']!, style: GoogleFonts.afacad()))).toList(),
-                  onChanged: (value) {
-                    if (mounted) {
-                      setState(() => _selectedGender = value);
-                      _updateFormProgress();
-                    }
-                  },
-                  validator: (value) => value == null ? 'Please select a gender' : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _phoneController,
-                  decoration: _buildInputDecoration('Phone Number', Icons.phone_outlined, solo: true).copyWith(
-                    prefixText: '$_phoneCountryCode ',
-                    prefixStyle: GoogleFonts.afacad(color: Colors.black),
-                  ),
-                  validator: (value) => Validators.validatePhoneNumber(value?.trim()),
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  onChanged: (value) => _updateFormProgress(),
-                ),
-                if (_isMinor) ...[
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _guardianPhoneController,
-                    decoration: _buildInputDecoration('Guardian Phone', Icons.phone_outlined, solo: true).copyWith(
-                      prefixText: '$_phoneCountryCode ',
-                      prefixStyle: GoogleFonts.afacad(color: Colors.black),
-                    ),
-                    validator: Validators.validatePhoneNumber,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _countryController,
-                  decoration: _buildInputDecoration('Country', Icons.public, solo: true),
-                  validator: Validators.validateCountry,
-                  keyboardType: TextInputType.text,
-                  onChanged: (value) => _updateFormProgress(),
-                ),
-                const SizedBox(height: 24),
-                _buildSectionHeader('Visit Details', Icons.work_outline),
-                const SizedBox(height: 16),
-                CheckboxListTile(
-                  value: _showVisitDetails,
-                  onChanged: (value) {
-                    setState(() {
-                      _showVisitDetails = value ?? false;
-                      if (!_showVisitDetails) {
-                        _visitType = 'staff';
-                        _hostNameController.clear();
-                        _hostPhoneController.clear();
-                        _hostEmailController.clear();
-                        _hostDepartmentController.clear();
-                        _hostPositionController.clear();
-                        _officeNameController.clear();
-                        _officePhoneController.clear();
-                        _officeEmailController.clear();
-                        _officeDepartmentController.clear();
-                        _officeContactPersonController.clear();
-                        _hadAppointment = null;
-                        _appointmentDetailsController.clear();
-                      }
-                      _updateFormProgress();
-                    });
-                  },
-                  title: Text('Provide Visit Details', style: GoogleFonts.afacad()),
-                  controlAffinity: ListTileControlAffinity.leading,
-                ),
-                if (_showVisitDetails) ...[
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: _visitType,
-                    decoration: _buildInputDecoration('Visit Type', Icons.work_outline, solo: true, isRequired: false),
-                    items: _visitTypeOptions.map((option) => DropdownMenuItem(value: option['value'], child: Text(option['label']!, style: GoogleFonts.afacad()))).toList(),
-                    onChanged: (value) {
-                      if (mounted) {
-                        setState(() {
-                          _visitType = value!;
-                          _hostNameController.clear();
-                          _hostPhoneController.clear();
-                          _hostEmailController.clear();
-                          _hostDepartmentController.clear();
-                          _hostPositionController.clear();
-                          _officeNameController.clear();
-                          _officePhoneController.clear();
-                          _officeEmailController.clear();
-                          _officeDepartmentController.clear();
-                          _officeContactPersonController.clear();
-                          _hadAppointment = null;
-                          _appointmentDetailsController.clear();
-                        });
-                        _updateFormProgress();
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  if (_visitType == 'staff') ...[
-                    TextFormField(
-                      controller: _hostNameController,
-                      decoration: _buildInputDecoration('Host Name', Icons.person_outline, isRequired: false, solo: true),
-                      validator: _showVisitDetails && _hostNameController.text.isNotEmpty ? Validators.validateName : null,
-                      keyboardType: TextInputType.name,
-                      onChanged: (value) => _updateFormProgress(),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _hostPhoneController,
-                      decoration: _buildInputDecoration('Host Phone', Icons.phone_outlined, isRequired: false, solo: true).copyWith(
-                        prefixText: '$_phoneCountryCode ',
-                        prefixStyle: GoogleFonts.afacad(color: Colors.black),
-                      ),
-                      validator: _showVisitDetails && _hostPhoneController.text.isNotEmpty ? Validators.validatePhoneNumber : null,
-                      keyboardType: TextInputType.phone,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      onChanged: (value) => _updateFormProgress(),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _hostEmailController,
-                      decoration: _buildInputDecoration('Host Email', Icons.email_outlined, isRequired: false, solo: true),
-                      validator: _showVisitDetails && _hostEmailController.text.isNotEmpty ? Validators.validateEmail : null,
-                      keyboardType: TextInputType.emailAddress,
-                      onChanged: (value) => _updateFormProgress(),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _hostDepartmentController,
-                      decoration: _buildInputDecoration('Host Department', Icons.business_outlined, isRequired: false, solo: true),
-                      keyboardType: TextInputType.text,
-                      onChanged: (value) => _updateFormProgress(),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _hostPositionController,
-                      decoration: _buildInputDecoration('Host Position', Icons.work_outline, isRequired: false, solo: true),
-                      keyboardType: TextInputType.text,
-                      onChanged: (value) => _updateFormProgress(),
-                    ),
-                  ],
-                  if (_visitType == 'office') ...[
-                    TextFormField(
-                      controller: _officeNameController,
-                      decoration: _buildInputDecoration('Office Name', Icons.business_outlined, isRequired: false, solo: true),
-                      validator: _showVisitDetails && _officeNameController.text.isNotEmpty ? Validators.validateRequired : null,
-                      keyboardType: TextInputType.text,
-                      onChanged: (value) => _updateFormProgress(),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _officePhoneController,
-                      decoration: _buildInputDecoration('Office Phone', Icons.phone_outlined, isRequired: false, solo: true).copyWith(
-                        prefixText: '$_phoneCountryCode ',
-                        prefixStyle: GoogleFonts.afacad(color: Colors.black),
-                      ),
-                      validator: _showVisitDetails && _officePhoneController.text.isNotEmpty ? Validators.validatePhoneNumber : null,
-                      keyboardType: TextInputType.phone,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      onChanged: (value) => _updateFormProgress(),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _officeEmailController,
-                      decoration: _buildInputDecoration('Office Email', Icons.email_outlined, isRequired: false, solo: true),
-                      validator: _showVisitDetails && _officeEmailController.text.isNotEmpty ? Validators.validateEmail : null,
-                      keyboardType: TextInputType.emailAddress,
-                      onChanged: (value) => _updateFormProgress(),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _officeDepartmentController,
-                      decoration: _buildInputDecoration('Office Department', Icons.business_outlined, isRequired: false, solo: true),
-                      keyboardType: TextInputType.text,
-                      onChanged: (value) => _updateFormProgress(),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _officeContactPersonController,
-                      decoration: _buildInputDecoration('Contact Person', Icons.person_outline, isRequired: false, solo: true),
-                      validator: _showVisitDetails && _officeContactPersonController.text.isNotEmpty ? Validators.validateName : null,
-                      keyboardType: TextInputType.name,
-                      onChanged: (value) => _updateFormProgress(),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: _hadAppointment == null ? null : (_hadAppointment! ? 'true' : 'false'),
-                    decoration: _buildInputDecoration('Had Appointment', Icons.event_outlined, isRequired: false, solo: true),
-                    items: [
-                      DropdownMenuItem(value: 'true', child: Text('Yes', style: GoogleFonts.afacad())),
-                      DropdownMenuItem(value: 'false', child: Text('No', style: GoogleFonts.afacad())),
-                    ],
-                    onChanged: (value) {
-                      if (mounted) {
-                        setState(() {
-                          _hadAppointment = value == 'true';
-                          if (!_hadAppointment!) {
-                            _appointmentDetailsController.clear();
-                          }
-                          _updateFormProgress();
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _appointmentDetailsController,
-                    decoration: _buildInputDecoration('Appointment Details', Icons.event_note_outlined, isRequired: false, solo: true),
-                    keyboardType: TextInputType.text,
-                    maxLines: 2,
-                    enabled: _hadAppointment == true,
-                    onChanged: (value) => _updateFormProgress(),
-                  ),
-                ],
-              ],
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionHeader('Personal Details', Icons.person),
+            _spacer(),
+            TextFormField(
+              controller: _nameController,
+              decoration: _inputDecoration('Full Name', Icons.person_outline),
+              style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+              validator: Validators.validateName,
+              keyboardType: TextInputType.name,
+              onChanged: (_) => _updateFormProgress(),
             ),
-          ),
+            _spacer(),
+            DropdownButtonFormField<String>(
+              value: _selectedGender,
+              decoration: _inputDecoration('Gender', Icons.wc),
+              items: _genderOptions.map((o) => DropdownMenuItem(
+                value: o['value'],
+                child: Text(o['label']!, style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14)),
+              )).toList(),
+              onChanged: (v) {
+                if (mounted) {
+                  setState(() => _selectedGender = v);
+                  _updateFormProgress();
+                }
+              },
+              validator: (v) => v == null ? 'Please select a gender' : null,
+            ),
+            _spacer(),
+            TextFormField(
+              controller: _phoneController,
+              decoration: _inputDecoration('Phone Number', Icons.phone).copyWith(
+                prefixText: '$_phoneCountryCode ',
+                prefixStyle: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16, color: Colors.black87),
+              ),
+              style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+              validator: (v) => Validators.validatePhoneNumber(v?.trim()),
+              keyboardType: TextInputType.phone,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: (_) => _updateFormProgress(),
+            ),
+            if (_isMinor) ...[
+              _spacer(),
+              TextFormField(
+                controller: _guardianPhoneController,
+                decoration: _inputDecoration('Guardian Phone', Icons.supervisor_account).copyWith(
+                  prefixText: '$_phoneCountryCode ',
+                  prefixStyle: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16, color: Colors.black87),
+                ),
+                style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+                validator: Validators.validatePhoneNumber,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onChanged: (_) => _updateFormProgress(),
+              ),
+            ],
+            _spacer(),
+            TextFormField(
+              controller: _countryController,
+              decoration: _inputDecoration('Country', Icons.public),
+              style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+              validator: Validators.validateCountry,
+              onChanged: (_) => _updateFormProgress(),
+            ),
+            _spacer(24),
+            _sectionHeader('Visit Details', Icons.business_center),
+            _spacer(),
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: _showVisitDetails ? AppColors.primaryBlue : Colors.grey.shade300),
+                borderRadius: BorderRadius.zero,
+              ),
+              child: SwitchListTile(
+                value: _showVisitDetails,
+                onChanged: (v) {
+                  setState(() {
+                    _showVisitDetails = v;
+                    if (!v) {
+                      _visitType = 'staff';
+                      for (final c in [
+                        _hostNameController, _hostPhoneController, _hostEmailController,
+                        _hostDepartmentController, _hostPositionController, _officeNameController,
+                        _officePhoneController, _officeEmailController, _officeDepartmentController,
+                        _officeContactPersonController, _appointmentDetailsController
+                      ]) {
+                        c.clear();
+                      }
+                      _hadAppointment = null;
+                    }
+                    _updateFormProgress();
+                  });
+                },
+                title: Text(
+                  'Provide Visit Details',
+                  style: TextStyle(
+                    fontFamily: 'BrandonGrotesque',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                subtitle: Text(
+                  _showVisitDetails ? 'Host/office information included' : 'Optional — tap to add',
+                  style: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 12, color: Colors.grey.shade500),
+                ),
+                activeColor: AppColors.primaryBlue,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+            ),
+            if (_showVisitDetails) ...[
+              _spacer(16),
+              DropdownButtonFormField<String>(
+                value: _visitType,
+                decoration: _inputDecoration('Visit Type', Icons.category, required: false),
+                items: _visitTypeOptions.map((o) => DropdownMenuItem(
+                  value: o['value'],
+                  child: Text(o['label']!, style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14)),
+                )).toList(),
+                onChanged: (v) {
+                  if (mounted) setState(() {
+                    _visitType = v!;
+                    for (final c in [
+                      _hostNameController, _hostPhoneController, _hostEmailController,
+                      _hostDepartmentController, _hostPositionController, _officeNameController,
+                      _officePhoneController, _officeEmailController, _officeDepartmentController,
+                      _officeContactPersonController, _appointmentDetailsController
+                    ]) {
+                      c.clear();
+                    }
+                    _hadAppointment = null;
+                  });
+                  _updateFormProgress();
+                },
+              ),
+              _spacer(),
+              if (_visitType == 'staff') ..._buildStaffFields(),
+              if (_visitType == 'office') ..._buildOfficeFields(),
+              _spacer(),
+              DropdownButtonFormField<String>(
+                value: _hadAppointment == null ? null : (_hadAppointment! ? 'true' : 'false'),
+                decoration: _inputDecoration('Had Appointment?', Icons.event_available, required: false),
+                items: const [
+                  DropdownMenuItem(value: 'true', child: Text('Yes', style: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14))),
+                  DropdownMenuItem(value: 'false', child: Text('No', style: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14))),
+                ],
+                onChanged: (v) {
+                  if (mounted) setState(() {
+                    _hadAppointment = v == 'true';
+                    if (!(_hadAppointment ?? true)) _appointmentDetailsController.clear();
+                    _updateFormProgress();
+                  });
+                },
+              ),
+              _spacer(),
+              TextFormField(
+                controller: _appointmentDetailsController,
+                decoration: _inputDecoration('Appointment Details', Icons.event_note, required: false),
+                style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+                maxLines: 2,
+                enabled: _hadAppointment == true,
+                onChanged: (_) => _updateFormProgress(),
+              ),
+            ],
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
+
+  List<Widget> _buildStaffFields() => [
+    TextFormField(
+      controller: _hostNameController,
+      decoration: _inputDecoration('Host Name', Icons.person_outline, required: false),
+      style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+      keyboardType: TextInputType.name,
+      onChanged: (_) => _updateFormProgress(),
+    ),
+    _spacer(),
+    TextFormField(
+      controller: _hostPhoneController,
+      decoration: _inputDecoration('Host Phone', Icons.phone, required: false).copyWith(
+        prefixText: '$_phoneCountryCode ',
+        prefixStyle: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16, color: Colors.black87),
+      ),
+      style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+      keyboardType: TextInputType.phone,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      onChanged: (_) => _updateFormProgress(),
+    ),
+    _spacer(),
+    TextFormField(
+      controller: _hostEmailController,
+      decoration: _inputDecoration('Host Email', Icons.email, required: false),
+      style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+      keyboardType: TextInputType.emailAddress,
+      onChanged: (_) => _updateFormProgress(),
+    ),
+    _spacer(),
+    TextFormField(
+      controller: _hostDepartmentController,
+      decoration: _inputDecoration('Host Department', Icons.business, required: false),
+      style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+      onChanged: (_) => _updateFormProgress(),
+    ),
+    _spacer(),
+    TextFormField(
+      controller: _hostPositionController,
+      decoration: _inputDecoration('Host Position', Icons.work_outline, required: false),
+      style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+      onChanged: (_) => _updateFormProgress(),
+    ),
+  ];
+
+  List<Widget> _buildOfficeFields() => [
+    TextFormField(
+      controller: _officeNameController,
+      decoration: _inputDecoration('Office Name', Icons.business, required: false),
+      style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+      onChanged: (_) => _updateFormProgress(),
+    ),
+    _spacer(),
+    TextFormField(
+      controller: _officePhoneController,
+      decoration: _inputDecoration('Office Phone', Icons.phone, required: false).copyWith(
+        prefixText: '$_phoneCountryCode ',
+        prefixStyle: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16, color: Colors.black87),
+      ),
+      style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+      keyboardType: TextInputType.phone,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      onChanged: (_) => _updateFormProgress(),
+    ),
+    _spacer(),
+    TextFormField(
+      controller: _officeEmailController,
+      decoration: _inputDecoration('Office Email', Icons.email, required: false),
+      style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+      keyboardType: TextInputType.emailAddress,
+      onChanged: (_) => _updateFormProgress(),
+    ),
+    _spacer(),
+    TextFormField(
+      controller: _officeDepartmentController,
+      decoration: _inputDecoration('Office Department', Icons.domain, required: false),
+      style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+      onChanged: (_) => _updateFormProgress(),
+    ),
+    _spacer(),
+    TextFormField(
+      controller: _officeContactPersonController,
+      decoration: _inputDecoration('Contact Person', Icons.contact_phone, required: false),
+      style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+      keyboardType: TextInputType.name,
+      onChanged: (_) => _updateFormProgress(),
+    ),
+  ];
+
+  // =========================================================================
+  // Step 3 – Entry Details
+  // =========================================================================
 
   Widget _buildEntryDetailsStep() {
-    final visitorProvider = Provider.of<VisitorProvider>(context);
-    return Form(
-      key: _entryFormKey,
-      child: FadeInUp(
-        child: Card(
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSectionHeader('Entry Details', Icons.directions),
-                const SizedBox(height: 20),
-                DropdownButtonFormField<String>(
-                  value: _selectedDestinationId,
-                  decoration: _buildInputDecoration('Destination', Icons.place, solo: true),
-                  items: visitorProvider.destinations.isNotEmpty
-                      ? visitorProvider.destinations
-                          .map((dest) => DropdownMenuItem(
-                                value: dest['id']?.toString(),
-                                child: Text(dest['name']?.toString() ?? 'Destination ${dest['id']}', style: GoogleFonts.afacad()),
-                              ))
-                          .toList()
-                      : [const DropdownMenuItem(value: null, child: Text('No destinations available', style: TextStyle(fontFamily: 'afacad')))],
-                  onChanged: (value) {
-                    if (mounted) {
-                      setState(() => _selectedDestinationId = value);
-                      _updateFormProgress();
-                    }
+    final vp = Provider.of<VisitorProvider>(context);
+    return FadeInUp(
+      duration: const Duration(milliseconds: 350),
+      child: Form(
+        key: _entryFormKey,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    _showSubtleNotification('Fetching', 'Loading tags...');
+                    await _fetchAvailableTagsInBackground();
                   },
-                  validator: (value) => value == null ? 'Please select a destination' : null,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: Text('Refresh Tags (${_availableTags.length} available)'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  ),
                 ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _selectedVisitorTagId,
-                  decoration: _buildInputDecoration('Visitor Tag', Icons.tag, solo: true),
-                  items: _availableTags.isNotEmpty
-                      ? _availableTags
-                          .map((tag) => DropdownMenuItem(
-                                value: tag['id']?.toString(),
-                                child: Text(tag['tag_number']?.toString() ?? 'Tag ${tag['id']}', style: GoogleFonts.afacad()),
-                              ))
-                          .toList()
-                      : [const DropdownMenuItem(value: null, child: Text('No tags available', style: TextStyle(fontFamily: 'afacad')))],
-                  onChanged: (value) {
-                    if (mounted) {
-                      setState(() => _selectedVisitorTagId = value);
-                      _updateFormProgress();
-                    }
-                  },
-                  validator: (value) => value == null ? 'Please select a visitor tag' : null,
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _selectedGate,
-                  decoration: _buildInputDecoration('Gate', Icons.door_front_door, solo: true),
-                  items: visitorProvider.gateId != null
-                      ? [
-                          DropdownMenuItem(
-                            value: visitorProvider.gateId.toString(),
-                            child: Text(visitorProvider.deviceGate ?? 'Gate ${visitorProvider.gateId}', style: GoogleFonts.afacad()),
-                          )
-                        ]
-                      : [const DropdownMenuItem(value: null, child: Text('No gates available', style: TextStyle(fontFamily: 'afacad')))],
-                  onChanged: (value) {
-                    if (mounted) {
-                      setState(() => _selectedGate = value);
-                      _updateFormProgress();
-                    }
-                  },
-                  validator: (value) => value == null ? 'Please select a gate' : null,
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
-                  decoration: _buildInputDecoration('Vehicle Type', Icons.directions_car, isRequired: false, solo: true),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('None', style: TextStyle(fontFamily: 'afacad'))),
-                    ..._vehicleTypeOptions
-                        .map((option) => DropdownMenuItem(value: option['value'], child: Text(option['label']!, style: GoogleFonts.afacad())))
-                        .toList(),
-                  ],
-                  onChanged: (value) {
-                    if (mounted) {
-                      setState(() {
-                        _vehicleTypeController.text = value ?? '';
-                        if (value == null) _vehicleRegController.clear();
-                        _updateFormProgress();
-                      });
-                    }
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _vehicleRegController,
-                  decoration: _buildInputDecoration('Vehicle Registration', Icons.directions_car, isRequired: false, solo: true),
-                  validator: (value) {
-                    if (value != null && value.isNotEmpty && !RegExp(r'^[A-Za-z0-9-]+$').hasMatch(value.trim())) {
-                      return 'Invalid vehicle registration format';
-                    }
-                    return null;
-                  },
-                  keyboardType: TextInputType.text,
-                  onChanged: (value) => _updateFormProgress(),
-                  enabled: _vehicleTypeController.text.isNotEmpty,
-                ),
-              ],
-            ),
+              ),
+              _sectionHeader('Entry Details', Icons.login),
+              _spacer(),
+              DropdownButtonFormField<String>(
+                value: _selectedDestinationId,
+                decoration: _inputDecoration('Destination', Icons.place),
+                items: vp.destinations.isNotEmpty
+                    ? vp.destinations.map((d) => DropdownMenuItem(
+                        value: d['id']?.toString(),
+                        child: Text(
+                          d['name']?.toString() ?? 'Destination ${d['id']}',
+                          style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14),
+                        ),
+                      )).toList()
+                    : [const DropdownMenuItem(value: null, child: Text('No destinations available', style: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14)))],
+                onChanged: (v) {
+                  if (mounted) {
+                    setState(() => _selectedDestinationId = v);
+                    _updateFormProgress();
+                  }
+                },
+                validator: (v) => v == null ? 'Please select a destination' : null,
+              ),
+              _spacer(),
+              DropdownButtonFormField<String>(
+                value: _selectedVisitorTagId,
+                decoration: _inputDecoration('Visitor Tag', Icons.local_offer),
+                items: _availableTags.isNotEmpty
+                    ? _availableTags.map((t) => DropdownMenuItem(
+                        value: t['id']?.toString(),
+                        child: Row(
+                          children: [
+                            Icon(Icons.tag, size: 16, color: AppColors.primaryBlue),
+                            const SizedBox(width: 8),
+                            Text(
+                              t['tag_number']?.toString() ?? 'Tag ${t['id']}',
+                              style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      )).toList()
+                    : [const DropdownMenuItem(value: null, child: Text('No tags available - tap refresh above', style: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14)))],
+                onChanged: (v) {
+                  if (mounted) {
+                    setState(() => _selectedVisitorTagId = v);
+                    _updateFormProgress();
+                  }
+                },
+                validator: (v) => v == null ? 'Please select a visitor tag' : null,
+              ),
+              _spacer(),
+              DropdownButtonFormField<String>(
+                value: _selectedGate,
+                decoration: _inputDecoration('Entry Gate', Icons.sensor_door),
+                items: vp.gateId != null
+                    ? [DropdownMenuItem(value: vp.gateId.toString(), child: Text(vp.deviceGate ?? 'Gate ${vp.gateId}', style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14)))]
+                    : [const DropdownMenuItem(value: null, child: Text('No gates available', style: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14)))],
+                onChanged: (v) {
+                  if (mounted) {
+                    setState(() => _selectedGate = v);
+                    _updateFormProgress();
+                  }
+                },
+                validator: (v) => v == null ? 'Please select a gate' : null,
+              ),
+              _spacer(24),
+              _sectionHeader('Vehicle (Optional)', Icons.directions_car),
+              _spacer(),
+              DropdownButtonFormField<String>(
+                value: _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
+                decoration: _inputDecoration('Vehicle Type', Icons.directions_car, required: false),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('None', style: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14))),
+                  ..._vehicleTypeOptions.map((o) => DropdownMenuItem(
+                    value: o['value'],
+                    child: Text(o['label']!, style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 14)),
+                  )),
+                ],
+                onChanged: (v) {
+                  if (mounted) setState(() {
+                    _vehicleTypeController.text = v ?? '';
+                    if (v == null) _vehicleRegController.clear();
+                    _updateFormProgress();
+                  });
+                },
+              ),
+              _spacer(),
+              TextFormField(
+                controller: _vehicleRegController,
+                decoration: _inputDecoration('Registration Number', Icons.pin, required: false),
+                style: const TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 16),
+                validator: (v) {
+                  if (v != null && v.isNotEmpty && !RegExp(r'^[A-Za-z0-9-]+$').hasMatch(v.trim())) {
+                    return 'Invalid vehicle registration format';
+                  }
+                  return null;
+                },
+                keyboardType: TextInputType.text,
+                enabled: _vehicleTypeController.text.isNotEmpty,
+                onChanged: (_) => _updateFormProgress(),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+
+  // =========================================================================
+  // Navigation & Registration
+  // =========================================================================
 
   void _handleBack() {
     if (_currentStep > 0) {
-      if (mounted) {
-        setState(() => _currentStep -= 1);
-      }
+      if (mounted) setState(() => _currentStep--);
     } else {
       Navigator.of(context).pop();
     }
   }
 
   Future<void> _handleNext() async {
-    FormState? currentFormKey;
-    if (_currentStep == 0) {
-      currentFormKey = _idFormKey.currentState;
-      if (currentFormKey?.validate() ?? false) {
-        await _checkExistingVisitor();
-        if (_idValidationError != null) {
-          _showErrorDialog(_idValidationError!);
-          return;
-        }
-      } else {
-        return;
+    if (_currentStep < 2) {
+      if (_validateCurrentStep()) {
+        if (mounted) setState(() => _currentStep++);
       }
-    } else if (_currentStep == 1) {
-      currentFormKey = _personalFormKey.currentState;
-      if (currentFormKey?.validate() ?? false) {
-        if (_phoneController.text.trim().isEmpty) {
-          _showErrorDialog('Phone number is required.');
-          return;
-        }
-        if (_showVisitDetails) {
-          if (_visitType == 'staff') {
-            if (_hostNameController.text.trim().isNotEmpty && Validators.validateName(_hostNameController.text.trim()) != null) {
-              _showErrorDialog('Please enter a valid host name.');
-              return;
-            }
-            if (_hostPhoneController.text.trim().isNotEmpty && Validators.validatePhoneNumber(_hostPhoneController.text.trim()) != null) {
-              _showErrorDialog('Please enter a valid host phone number.');
-              return;
-            }
-            if (_hostEmailController.text.trim().isNotEmpty && Validators.validateEmail(_hostEmailController.text.trim()) != null) {
-              _showErrorDialog('Please enter a valid host email.');
-              return;
-            }
-          } else if (_visitType == 'office') {
-            if (_officeNameController.text.trim().isNotEmpty && Validators.validateRequired(_officeNameController.text.trim()) != null) {
-              _showErrorDialog('Please enter a valid office name.');
-              return;
-            }
-            if (_officePhoneController.text.trim().isNotEmpty && Validators.validatePhoneNumber(_officePhoneController.text.trim()) != null) {
-              _showErrorDialog('Please enter a valid office phone number.');
-              return;
-            }
-            if (_officeEmailController.text.trim().isNotEmpty && Validators.validateEmail(_officeEmailController.text.trim()) != null) {
-              _showErrorDialog('Please enter a valid office email.');
-              return;
-            }
-            if (_officeContactPersonController.text.trim().isNotEmpty && Validators.validateName(_officeContactPersonController.text.trim()) != null) {
-              _showErrorDialog('Please enter a valid office contact person name.');
-              return;
-            }
-          }
-        }
-      } else {
-        return;
-      }
-    } else if (_currentStep == 2) {
-      currentFormKey = _entryFormKey.currentState;
-      if (currentFormKey?.validate() ?? false) {
-        if (_authToken == null || gateId == null) {
-          await _loadTokenFromPreferences();
-          if (_authToken == null || gateId == null) {
-            _showErrorDialog('No authentication token or gate ID found. Please log in again.');
-            Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-            return;
-          }
-        }
-        final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
-        if (visitorProvider.destinations.isEmpty) {
-          await visitorProvider.loadDestinations();
-          if (visitorProvider.destinations.isEmpty) {
-            _showErrorDialog('No destinations available. Please contact the administrator.');
-            return;
-          }
-        }
-        if (_selectedVisitorTagId == null) {
-          await _fetchAvailableTags();
-          if (_availableTags.isEmpty) {
-            _showErrorDialog('No unassigned visitor tags available. Please contact the administrator.');
-            return;
-          }
-          if (mounted) {
-            setState(() => _selectedVisitorTagId = _availableTags.first['id'].toString());
-          }
-        }
-        if (_selectedDestinationId == null) {
-          _showErrorDialog('Please select a valid destination.');
-          return;
-        }
-        if (_selectedGate == null || _selectedGate != visitorProvider.gateId?.toString()) {
-          _showErrorDialog('Invalid or missing gate selection. Please select the correct gate.');
-          return;
-        }
-
-        // Validate vehicle registration if provided
-        if (_vehicleRegController.text.isNotEmpty && !RegExp(r'^[A-Za-z0-9-]+$').hasMatch(_vehicleRegController.text.trim())) {
-          _showErrorDialog('Invalid vehicle registration format.');
-          return;
-        }
-
-        // Check if visitor exists
-        final response = await visitorProvider.checkExistingVisitor(_idNumberController.text.trim(), _selectedIdType);
-        bool isExistingVisitor = response != null && (response['exists'] == true || response['exists'] == 'true') && response['visitor'] != null;
-        bool isCheckedIn = response != null && response['alreadyCheckedIn'] == true;
-
-        // Show confirmation dialog
-        bool? confirm = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(isExistingVisitor ? 'Confirm New Visit' : 'Confirm Registration', style: GoogleFonts.afacad(fontWeight: FontWeight.bold)),
-            content: Text(
-              isExistingVisitor ? 'Create a new visit for this existing visitor?' : 'Are you sure you want to register this visitor?',
-              style: GoogleFonts.afacad(),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text('Cancel', style: GoogleFonts.afacad()),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text('Confirm', style: GoogleFonts.afacad()),
-              ),
-            ],
-          ),
-        );
-
-        if (confirm != true) return;
-
-        if (mounted) {
-          setState(() => _isLoading = true);
-        }
-
-        try {
-          // Parse IDs
-          final destinationId = int.tryParse(_selectedDestinationId ?? '');
-          final visitorTagId = int.tryParse(_selectedVisitorTagId ?? '');
-          final gateIdParsed = int.tryParse(_selectedGate ?? '');
-
-          if (destinationId == null || visitorTagId == null || gateIdParsed == null) {
-            throw VisitorNetworkException('Invalid ID format: destinationId=$destinationId, visitorTagId=$visitorTagId, gateId=$gateIdParsed');
-          }
-
-          if (isExistingVisitor && !isCheckedIn) {
-            // Create visit for existing visitor
-            final visitorId = int.tryParse(response['visitor']['id'].toString());
-            if (visitorId == null) {
-              throw VisitorValidationException('Invalid visitor ID for existing visitor');
-            }
-
-            final visit = {
-              'visitor_id': visitorId,
-              'visit_type': _showVisitDetails ? _visitType : null,
-              'visitor_destination_id': destinationId,
-              'visitor_tag_id': visitorTagId,
-              'gate_id': gateIdParsed,
-              'had_appointment': _showVisitDetails ? _hadAppointment : null,
-              'appointment_details': _showVisitDetails && _appointmentDetailsController.text.isNotEmpty ? _appointmentDetailsController.text.trim() : null,
-              'vehicle_type': _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
-              'vehicle_registration': _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
-              if (_showVisitDetails && _visitType == 'staff') ...{
-                'host': _hostNameController.text.isNotEmpty ? _hostNameController.text.trim() : null,
-                'host_phone': _hostPhoneController.text.isNotEmpty ? _phoneCountryCode + _hostPhoneController.text.trim() : null,
-                'host_email': _hostEmailController.text.isNotEmpty ? _hostEmailController.text.trim() : null,
-                'host_department': _hostDepartmentController.text.isNotEmpty ? _hostDepartmentController.text.trim() : null,
-                'host_position': _hostPositionController.text.isNotEmpty ? _hostPositionController.text.trim() : null,
-              },
-              if (_showVisitDetails && _visitType == 'office') ...{
-                'office_name': _officeNameController.text.isNotEmpty ? _officeNameController.text.trim() : null,
-                'office_phone': _officePhoneController.text.isNotEmpty ? _phoneCountryCode + _officePhoneController.text.trim() : null,
-                'office_email': _officeEmailController.text.isNotEmpty ? _officeEmailController.text.trim() : null,
-                'office_department': _officeDepartmentController.text.isNotEmpty ? _officeDepartmentController.text.trim() : null,
-                'office_contact_person': _officeContactPersonController.text.isNotEmpty ? _officeContactPersonController.text.trim() : null,
-              },
-            };
-
-            debugPrint('📤 Creating visit for existing visitor with payload: ${jsonEncode(visit)}');
-            await visitorProvider.createVisitForExistingVisitor(visit);
-
-            if (mounted) {
-              setState(() => _isLoading = false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Visit created successfully for existing visitor!', style: GoogleFonts.afacad()),
-                  backgroundColor: Colors.green,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              );
-              Navigator.of(context).pop();
-            }
-          } else if (isExistingVisitor && isCheckedIn) {
-            throw VisitorValidationException('Visitor is currently active. Cannot create a new visit until checked out.');
-          } else {
-            // Register new visitor
-            final visitor = Visitor(
-              id: 0,
-              identificationType: _selectedIdType,
-              identificationNumber: _idNumberController.text.trim(),
-              name: _nameController.text.trim(),
-              phoneNumber: _phoneCountryCode + _phoneController.text.trim(),
-              guardianPhone: _isMinor ? _phoneCountryCode + _guardianPhoneController.text.trim() : null,
-              visitType: _showVisitDetails ? _visitType : null,
-              host: _showVisitDetails && _visitType == 'staff' && _hostNameController.text.isNotEmpty
-                  ? {
-                      'name': _hostNameController.text.trim(),
-                      'phone': _phoneCountryCode + _hostPhoneController.text.trim(),
-                      'email': _hostEmailController.text.isNotEmpty ? _hostEmailController.text.trim() : '',
-                      'department': _hostDepartmentController.text.isNotEmpty ? _hostDepartmentController.text.trim() : '',
-                      'position': _hostPositionController.text.isNotEmpty ? _hostPositionController.text.trim() : '',
-                      'id': '',
-                      'createdAt': DateTime.now().toIso8601String(),
-                    }
-                  : null,
-              officeName: _showVisitDetails && _visitType == 'office' && _officeNameController.text.isNotEmpty ? _officeNameController.text.trim() : null,
-              officePhone: _showVisitDetails && _visitType == 'office' && _officePhoneController.text.isNotEmpty ? _phoneCountryCode + _officePhoneController.text.trim() : null,
-              officeEmail: _showVisitDetails && _visitType == 'office' && _officeEmailController.text.isNotEmpty ? _officeEmailController.text.trim() : null,
-              officeDepartment: _showVisitDetails && _visitType == 'office' && _officeDepartmentController.text.isNotEmpty ? _officeDepartmentController.text.trim() : null,
-              officeContactPerson: _showVisitDetails && _visitType == 'office' && _officeContactPersonController.text.isNotEmpty ? _officeContactPersonController.text.trim() : null,
-              hadAppointment: _showVisitDetails ? _hadAppointment ?? false : null,
-              appointmentDetails: _showVisitDetails && _appointmentDetailsController.text.isNotEmpty ? _appointmentDetailsController.text.trim() : null,
-              vehicleType: _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
-              vehicleRegistration: _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
-              destinationId: destinationId,
-              visitorTagId: visitorTagId,
-              gateId: gateIdParsed,
-              isMinor: _isMinor,
-              phoneCountryCode: _phoneCountryCode,
-              country: _countryController.text.trim(),
-              gender: _selectedGender,
-            );
-
-            debugPrint('📤 Registering new visitor with payload: ${jsonEncode(visitor.toMap())}');
-            await visitorProvider.registerVisitor(visitor);
-
-            if (mounted) {
-              setState(() => _isLoading = false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Visitor registered successfully!', style: GoogleFonts.afacad()),
-                  backgroundColor: Colors.green,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              );
-              Navigator.of(context).pop();
-            }
-          }
-        } catch (e) {
-          if (mounted) {
-            setState(() => _isLoading = false);
-            debugPrint('Registration error: $e');
-            if (e is VisitorAuthException) {
-              _showErrorDialog('Session expired. Please log in again.');
-              Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-            } else if (e is VisitorNetworkException || e is VisitorValidationException) {
-              String errorMessage = e.toString();
-              if (errorMessage.contains('422')) {
-                try {
-                  final errorBody = jsonDecode(errorMessage.split(' - ').last);
-                  errorMessage = errorBody['message'] ?? 'Validation error occurred';
-                } catch (_) {
-                  errorMessage = 'Validation error: ${errorMessage.split(':').last.trim()}';
-                }
-                if (errorMessage.contains('visitor tag is already assigned')) {
-                  await _fetchAvailableTags();
-                  if (_availableTags.isEmpty) {
-                    _showErrorDialog('No unassigned visitor tags available. Please contact the administrator.');
-                  } else {
-                    if (mounted) {
-                      setState(() => _selectedVisitorTagId = _availableTags.first['id'].toString());
-                      _showErrorDialog('Visitor tag is already assigned. A new tag has been selected. Please try again.');
-                    }
-                  }
-                } else if (errorMessage.contains('visitor_destination_id')) {
-                  _showErrorDialog('Invalid destination selected. Please try again.');
-                  await visitorProvider.loadDestinations();
-                } else if (errorMessage.contains('gate_id') || errorMessage.contains('visitor_gates')) {
-                  _showErrorDialog('Invalid gate configuration. Please contact the administrator or try again.');
-                  await _loadInitialData();
-                } else {
-                  _showErrorDialog(errorMessage);
-                }
-              } else if (errorMessage.contains('500')) {
-                _showErrorDialog('Server error occurred. Please contact the administrator.');
-              } else {
-                _showErrorDialog('Registration failed: $e');
-              }
-            } else {
-              _showErrorDialog('Registration failed: $e');
-            }
-          }
-          return;
-        }
-      }
+      return;
     }
-
-    if (mounted && _currentStep < 2) {
-      setState(() => _currentStep += 1);
+    if (!mounted) return;
+    setState(() => _isSubmitting = true);
+    try {
+      await _registerVisitor();
+      if (mounted) {
+        _showSubtleNotification('Success', 'Visitor registered successfully');
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) _showSubtleNotification('Error', e.toString(), isError: true);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
+  bool _validateCurrentStep() {
+    if (_currentStep == 0) {
+      if (!(_idFormKey.currentState?.validate() ?? false)) return false;
+      if (_idValidationError != null) {
+        _showSubtleNotification('Validation Error', _idValidationError!, isError: true);
+        return false;
+      }
+      return true;
+    }
+    if (_currentStep == 1) {
+      if (!(_personalFormKey.currentState?.validate() ?? false)) return false;
+      if (_phoneController.text.trim().isEmpty) {
+        _showSubtleNotification('Error', 'Phone number is required', isError: true);
+        return false;
+      }
+      return true;
+    }
+    return true;
+  }
+
+  // Keep your existing _registerVisitor method here
+  Future<void> _registerVisitor() async {
+    final vp = Provider.of<VisitorProvider>(context, listen: false);
+    
+    debugPrint('🚀 Starting visitor registration...');
+    
+    if (_authToken == null || gateId == null) {
+      await _loadTokenFromPreferences();
+      if (_authToken == null || gateId == null) {
+        throw Exception('No authentication token or gate ID found');
+      }
+    }
+    
+    if (vp.destinations.isEmpty) {
+      await vp.loadDestinations();
+      if (vp.destinations.isEmpty) {
+        throw Exception('No destinations available');
+      }
+    }
+    
+    if (_selectedVisitorTagId == null) {
+      await _fetchAvailableTagsInBackground();
+      if (_availableTags.isEmpty) {
+        throw Exception('No unassigned visitor tags available');
+      }
+      if (mounted) {
+        setState(() => _selectedVisitorTagId = _availableTags.first['id'].toString());
+      }
+    }
+    
+    Map<String, dynamic>? response;
+    try {
+      response = await vp.checkExistingVisitor(
+        _idNumberController.text.trim(), 
+        _selectedIdType
+      );
+      debugPrint('📥 Check existing visitor response: $response');
+    } catch (e) {
+      debugPrint('⚠️ Error checking existing visitor: $e');
+      if (!e.toString().contains('404')) {
+        rethrow;
+      }
+    }
+    
+    bool isExisting = response != null && 
+        (response['exists'] == true || response['exists'] == 'true') && 
+        response['visitor'] != null;
+    bool isCheckedIn = response != null && response['alreadyCheckedIn'] == true;
+    
+    debugPrint('📊 isExisting: $isExisting, isCheckedIn: $isCheckedIn');
+    
+    if (isExisting && isCheckedIn) {
+      _showSubtleNotification(
+        'Visitor Still Checked In',
+        'This visitor is currently active and has not checked out. Please check them out before registering a new visit.',
+        isError: true,
+      );
+      if (mounted) setState(() => _isSubmitting = false);
+      return;
+    }
+    
+    final destId = int.tryParse(_selectedDestinationId ?? '');
+    final tagId = int.tryParse(_selectedVisitorTagId ?? '');
+    final gId = int.tryParse(_selectedGate ?? '');
+    
+    if (destId == null || tagId == null || gId == null) {
+      throw Exception('Invalid ID format: destId=$destId, tagId=$tagId, gId=$gId');
+    }
+    
+    String cleanPhone(String? phone) {
+      if (phone == null || phone.isEmpty) return '';
+      String cleaned = phone.trim();
+      if (cleaned.startsWith('+254')) {
+        cleaned = cleaned.substring(4);
+      }
+      return cleaned;
+    }
+    
+    if (isExisting && !isCheckedIn) {
+      final visitorId = int.tryParse(response!['visitor']['id'].toString());
+      if (visitorId == null) {
+        throw Exception('Invalid visitor ID');
+      }
+      
+      final Map<String, dynamic> visitPayload = {
+        'visitor_id': visitorId,
+        'visitor_tag_id': tagId,
+        'visitor_destination_id': destId,
+        'gate_id': gId,
+      };
+      
+      if (_showVisitDetails && _visitType.isNotEmpty) {
+        visitPayload['visit_type'] = _visitType;
+      }
+      
+      if (_showVisitDetails && _hadAppointment != null) {
+        visitPayload['had_appointment'] = _hadAppointment;
+      }
+      
+      if (_showVisitDetails && _appointmentDetailsController.text.isNotEmpty) {
+        visitPayload['appointment_details'] = _appointmentDetailsController.text.trim();
+      }
+      
+      if (_vehicleTypeController.text.isNotEmpty) {
+        visitPayload['vehicle_type'] = _vehicleTypeController.text;
+      }
+      
+      if (_vehicleRegController.text.isNotEmpty) {
+        visitPayload['vehicle_registration'] = _vehicleRegController.text.trim();
+      }
+      
+      if (_showVisitDetails && _visitType == 'staff') {
+        if (_hostNameController.text.isNotEmpty) {
+          visitPayload['host'] = _hostNameController.text.trim();
+        }
+        if (_hostPhoneController.text.isNotEmpty) {
+          visitPayload['host_phone'] = cleanPhone(_hostPhoneController.text);
+        }
+        if (_hostEmailController.text.isNotEmpty) {
+          visitPayload['host_email'] = _hostEmailController.text.trim();
+        }
+        if (_hostDepartmentController.text.isNotEmpty) {
+          visitPayload['host_department'] = _hostDepartmentController.text.trim();
+        }
+        if (_hostPositionController.text.isNotEmpty) {
+          visitPayload['host_position'] = _hostPositionController.text.trim();
+        }
+      }
+      
+      if (_showVisitDetails && _visitType == 'office') {
+        if (_officeNameController.text.isNotEmpty) {
+          visitPayload['office_name'] = _officeNameController.text.trim();
+        }
+        if (_officePhoneController.text.isNotEmpty) {
+          visitPayload['office_phone'] = cleanPhone(_officePhoneController.text);
+        }
+        if (_officeEmailController.text.isNotEmpty) {
+          visitPayload['office_email'] = _officeEmailController.text.trim();
+        }
+        if (_officeDepartmentController.text.isNotEmpty) {
+          visitPayload['office_department'] = _officeDepartmentController.text.trim();
+        }
+        if (_officeContactPersonController.text.isNotEmpty) {
+          visitPayload['office_contact_person'] = _officeContactPersonController.text.trim();
+        }
+      }
+      
+      debugPrint('📤 Creating visit for existing visitor: ${jsonEncode(visitPayload)}');
+      await vp.createVisitForExistingVisitor(visitPayload);
+      
+    } else {
+      final Map<String, dynamic> visitorPayload = {
+        'name': _nameController.text.trim(),
+        'phone_number': cleanPhone(_phoneController.text),
+        'phone_country_code': _phoneCountryCode,
+        'identification_type': _selectedIdType,
+        'identification_number': _idNumberController.text.trim(),
+        'visitor_tag_id': tagId,
+        'visitor_destination_id': destId,
+        'visitor_gate_id': gId,
+      };
+      
+      if (_countryController.text.isNotEmpty && _countryController.text != 'Kenya') {
+        visitorPayload['country'] = _countryController.text.trim();
+      }
+      
+      if (_selectedGender != null && _selectedGender!.isNotEmpty) {
+        visitorPayload['gender'] = _selectedGender;
+      }
+      
+      if (_isMinor) {
+        visitorPayload['is_minor'] = true;
+        if (_guardianPhoneController.text.isNotEmpty) {
+          visitorPayload['guardian_phone'] = cleanPhone(_guardianPhoneController.text);
+        }
+      } else {
+        visitorPayload['is_minor'] = false;
+      }
+      
+      if (_showVisitDetails && _visitType.isNotEmpty) {
+        visitorPayload['visit_type'] = _visitType;
+      }
+      
+      if (_showVisitDetails && _hadAppointment != null) {
+        visitorPayload['had_appointment'] = _hadAppointment;
+      }
+      
+      if (_showVisitDetails && _appointmentDetailsController.text.isNotEmpty) {
+        visitorPayload['appointment_details'] = _appointmentDetailsController.text.trim();
+      }
+      
+      if (_vehicleTypeController.text.isNotEmpty) {
+        visitorPayload['vehicle_type'] = _vehicleTypeController.text;
+      }
+      
+      if (_vehicleRegController.text.isNotEmpty) {
+        visitorPayload['vehicle_registration'] = _vehicleRegController.text.trim();
+      }
+      
+      if (_showVisitDetails && _visitType == 'staff') {
+        if (_hostNameController.text.isNotEmpty) {
+          visitorPayload['host'] = _hostNameController.text.trim();
+        }
+        if (_hostPhoneController.text.isNotEmpty) {
+          visitorPayload['host_phone'] = cleanPhone(_hostPhoneController.text);
+        }
+        if (_hostEmailController.text.isNotEmpty) {
+          visitorPayload['host_email'] = _hostEmailController.text.trim();
+        }
+        if (_hostDepartmentController.text.isNotEmpty) {
+          visitorPayload['host_department'] = _hostDepartmentController.text.trim();
+        }
+        if (_hostPositionController.text.isNotEmpty) {
+          visitorPayload['host_position'] = _hostPositionController.text.trim();
+        }
+      }
+      
+      if (_showVisitDetails && _visitType == 'office') {
+        if (_officeNameController.text.isNotEmpty) {
+          visitorPayload['office_name'] = _officeNameController.text.trim();
+        }
+        if (_officePhoneController.text.isNotEmpty) {
+          visitorPayload['office_phone'] = cleanPhone(_officePhoneController.text);
+        }
+        if (_officeEmailController.text.isNotEmpty) {
+          visitorPayload['office_email'] = _officeEmailController.text.trim();
+        }
+        if (_officeDepartmentController.text.isNotEmpty) {
+          visitorPayload['office_department'] = _officeDepartmentController.text.trim();
+        }
+        if (_officeContactPersonController.text.isNotEmpty) {
+          visitorPayload['office_contact_person'] = _officeContactPersonController.text.trim();
+        }
+      }
+      
+      visitorPayload.removeWhere((key, value) => 
+          value == null || (value is String && value.isEmpty));
+      
+      debugPrint('📤 Registering new visitor with payload: ${jsonEncode(visitorPayload)}');
+      
+      final visitor = Visitor(
+        id: 0,
+        identificationType: _selectedIdType,
+        identificationNumber: _idNumberController.text.trim(),
+        name: _nameController.text.trim(),
+        phoneNumber: _phoneCountryCode + _phoneController.text.trim(),
+        guardianPhone: _isMinor && _guardianPhoneController.text.isNotEmpty 
+            ? _phoneCountryCode + _guardianPhoneController.text.trim() 
+            : null,
+        visitType: _showVisitDetails ? _visitType : null,
+        host: _showVisitDetails && _visitType == 'staff' && _hostNameController.text.isNotEmpty ? {
+          'name': _hostNameController.text.trim(),
+          'phone': _phoneCountryCode + _hostPhoneController.text.trim(),
+          'email': _hostEmailController.text.isNotEmpty ? _hostEmailController.text.trim() : '',
+          'department': _hostDepartmentController.text.isNotEmpty ? _hostDepartmentController.text.trim() : '',
+          'position': _hostPositionController.text.isNotEmpty ? _hostPositionController.text.trim() : '',
+          'id': '',
+          'createdAt': DateTime.now().toIso8601String(),
+        } : null,
+        officeName: _showVisitDetails && _visitType == 'office' && _officeNameController.text.isNotEmpty 
+            ? _officeNameController.text.trim() 
+            : null,
+        officePhone: _showVisitDetails && _visitType == 'office' && _officePhoneController.text.isNotEmpty 
+            ? _phoneCountryCode + _officePhoneController.text.trim() 
+            : null,
+        officeEmail: _showVisitDetails && _visitType == 'office' && _officeEmailController.text.isNotEmpty 
+            ? _officeEmailController.text.trim() 
+            : null,
+        officeDepartment: _showVisitDetails && _visitType == 'office' && _officeDepartmentController.text.isNotEmpty 
+            ? _officeDepartmentController.text.trim() 
+            : null,
+        officeContactPerson: _showVisitDetails && _visitType == 'office' && _officeContactPersonController.text.isNotEmpty 
+            ? _officeContactPersonController.text.trim() 
+            : null,
+        hadAppointment: _showVisitDetails ? _hadAppointment ?? false : null,
+        appointmentDetails: _showVisitDetails && _appointmentDetailsController.text.isNotEmpty 
+            ? _appointmentDetailsController.text.trim() 
+            : null,
+        vehicleType: _vehicleTypeController.text.isNotEmpty ? _vehicleTypeController.text : null,
+        vehicleRegistration: _vehicleRegController.text.isNotEmpty ? _vehicleRegController.text.trim() : null,
+        destinationId: destId,
+        visitorTagId: tagId,
+        gateId: gId,
+        isMinor: _isMinor,
+        phoneCountryCode: _phoneCountryCode,
+        country: _countryController.text.trim(),
+        gender: _selectedGender,
+      );
+      
+      await vp.registerVisitor(visitor);
+    }
+    
+    debugPrint('✅ Registration completed successfully!');
+  }
+
+  // =========================================================================
+  // Build
+  // =========================================================================
+
   @override
   Widget build(BuildContext context) {
-    final visitorProvider = Provider.of<VisitorProvider>(context);
-    final canRegister = visitorProvider.gateId != null &&
-        visitorProvider.deviceGate != null &&
-        visitorProvider.visitorTags.any((tag) => tag['visitor_gate_id']?.toString() == visitorProvider.gateId?.toString() && tag['is_assigned'] == false);
-
-    final steps = [
-      _buildIdentificationStep(),
-      _buildPersonalDetailsStep(),
-      _buildEntryDetailsStep(),
-    ];
+    final vp = Provider.of<VisitorProvider>(context);
+    final canRegister = vp.gateId != null &&
+        vp.deviceGate != null &&
+        vp.visitorTags.any((t) =>
+            t['visitor_gate_id']?.toString() == vp.gateId?.toString() &&
+            t['is_assigned'] == false);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      resizeToAvoidBottomInset: true,
+      backgroundColor: const Color(0xFFF4F6F9),
       appBar: CustomAppBar(
         title: 'Visitor Registration',
         isDarkMode: false,
@@ -1630,133 +1577,183 @@ class _VisitorRegistrationScreenState extends State<VisitorRegistrationScreen> {
         onBack: _handleBack,
       ),
       body: SafeArea(
-        child: _isLoading || _isRefreshing
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _refreshData,
-                color: AppColors.primaryBlue,
-                child: canRegister
-                    ? Column(
-                        children: [
-                          // Progress Indicator
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                            child: LinearProgressIndicator(
-                              value: _formProgress,
-                              backgroundColor: Colors.grey.shade200,
-                              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
-                              minHeight: 8,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                            child: Text(
-                              'Form Progress: ${(_formProgress * 100).toInt()}%',
-                              style: GoogleFonts.afacad(fontSize: 12, color: Colors.grey.shade600),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          // Stepper
-                          IconStepper(
-                            icons: const [
-                              Icon(Icons.credit_card, color: Colors.white),
-                              Icon(Icons.person, color: Colors.white),
-                              Icon(Icons.directions, color: Colors.white),
-                            ],
-                            activeStep: _currentStep,
-                            stepColor: Colors.grey.shade300,
-                            activeStepColor: AppColors.primaryBlue,
-                            activeStepBorderColor: AppColors.primaryBlue,
-                            lineColor: Colors.grey.shade400,
-                            lineLength: 60,
-                            onStepReached: (index) {
-                              if (mounted) {
-                                setState(() => _currentStep = index);
-                              }
-                            },
-                          ),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: steps[_currentStep],
-                              ),
-                            ),
-                          ),
-                          // Navigation Buttons
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                if (_currentStep > 0)
-                                  ZoomIn(
-                                    child: OutlinedButton(
-                                      onPressed: _isLoading || _isScanning ? null : _handleBack,
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: AppColors.primaryBlue,
-                                        side: const BorderSide(color: AppColors.primaryBlue),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                      ),
-                                      child: Text('BACK', style: GoogleFonts.afacad(fontWeight: FontWeight.w600, fontSize: 14)),
-                                    ),
-                                  ),
-                                ZoomIn(
-                                  child: ElevatedButton(
-                                    onPressed: _isLoading || _isScanning ? null : _handleNext,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.primaryBlue,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                    ),
-                                    child: Text(
-                                      _currentStep == 2 ? (_isLoading ? 'REGISTERING...' : 'REGISTER') : 'NEXT',
-                                      style: GoogleFonts.afacad(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      )
-                    : Center(
-                        child: FadeInUp(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.error_outline, size: 64, color: AppColors.error),
-                              const SizedBox(height: 20),
-                              Text('Registration Unavailable', style: GoogleFonts.afacad(fontSize: 20, fontWeight: FontWeight.w600, color: AppColors.error)),
-                              const SizedBox(height: 12),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 40),
-                                child: Text(
-                                  'No unassigned visitor tags or gate assignment available. Please contact the administrator.',
-                                  style: GoogleFonts.afacad(color: Colors.grey.shade600),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                              const SizedBox(height: 24),
-                              ZoomIn(
-                                child: ElevatedButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primaryBlue,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                                  ),
-                                  child: Text('RETURN HOME', style: GoogleFonts.afacad(color: Colors.white, fontWeight: FontWeight.w600)),
-                                ),
-                              ),
-                            ],
+        child: Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              height: (_isBackgroundChecking || _isBackgroundFetching) ? 3 : 0,
+              child: LinearProgressIndicator(
+                backgroundColor: Colors.transparent,
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue.withOpacity(0.7)),
+                minHeight: 3,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Text(
+                    'Step ${_currentStep + 1} of 3 — ${_stepTitles[_currentStep]}',
+                    style: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    '${(_formProgress * 100).toInt()}% complete',
+                    style: TextStyle(fontFamily: 'BrandonGrotesque', fontSize: 12, color: AppColors.primaryBlue, fontWeight: FontWeight.w700),
+                  ),
+                ]),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: _formProgress,
+                    backgroundColor: Colors.grey.shade200,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+                    minHeight: 6,
+                  ),
+                ),
+              ]),
+            ),
+            IconStepper(
+              icons: _stepIcons.map((i) => Icon(i, color: Colors.white, size: 18)).toList(),
+              activeStep: _currentStep,
+              stepColor: Colors.grey.shade300,
+              activeStepColor: AppColors.primaryBlue,
+              activeStepBorderColor: AppColors.primaryBlue,
+              lineColor: Colors.grey.shade300,
+              lineLength: 56,
+              onStepReached: (i) {
+                if (mounted) setState(() => _currentStep = i);
+              },
+            ),
+            Expanded(
+              child: canRegister
+                  ? IndexedStack(
+                      index: _currentStep,
+                      children: [
+                        SingleChildScrollView(
+                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                          child: _buildIdentificationStep(),
+                        ),
+                        SingleChildScrollView(
+                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                          child: _buildPersonalDetailsStep(),
+                        ),
+                        SingleChildScrollView(
+                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                          child: _buildEntryDetailsStep(),
+                        ),
+                      ],
+                    )
+                  : _buildUnavailableState(),
+            ),
+            if (canRegister)
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, -2))],
+                ),
+                padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom * 0.5),
+                child: Row(
+                  children: [
+                    if (_currentStep > 0) ...[
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: (_isSubmitting || _isScanning) ? null : _handleBack,
+                          icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                          label: const Text('BACK', style: TextStyle(fontFamily: 'BrandonGrotesque', fontWeight: FontWeight.w700, fontSize: 14)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primaryBlue,
+                            side: const BorderSide(color: AppColors.primaryBlue, width: 1.5),
+                            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
                         ),
                       ),
+                      const SizedBox(width: 12),
+                    ],
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        onPressed: (_isSubmitting || _isScanning) ? null : _handleNext,
+                        icon: _isSubmitting
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : Icon(_currentStep == 2 ? Icons.how_to_reg_rounded : Icons.arrow_forward_rounded, size: 18),
+                        label: Text(
+                          _isSubmitting ? 'Registering…' : (_currentStep == 2 ? 'REGISTER' : 'NEXT'),
+                          style: const TextStyle(fontFamily: 'BrandonGrotesque', fontWeight: FontWeight.w700, fontSize: 14, color: Colors.white),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryBlue,
+                          disabledBackgroundColor: AppColors.primaryBlue.withOpacity(0.5),
+                          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+          ],
+        ),
       ),
     );
   }
+
+  // =========================================================================
+  // Unavailable state
+  // =========================================================================
+
+  Widget _buildUnavailableState() => FadeInUp(
+    child: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(color: AppColors.error.withOpacity(0.08), shape: BoxShape.circle),
+            child: const Icon(Icons.error_outline_rounded, size: 56, color: AppColors.error),
+          ),
+          const SizedBox(height: 24),
+          const Text('Registration Unavailable',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, fontFamily: 'BrandonGrotesque', color: AppColors.error),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No unassigned visitor tags or gate assignment found.\nPlease contact the administrator.',
+            style: TextStyle(fontFamily: 'BrandonGrotesque', color: Colors.grey.shade600, height: 1.5),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            OutlinedButton.icon(
+              onPressed: _silentRefresh,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Retry', style: TextStyle(fontFamily: 'BrandonGrotesque', fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primaryBlue,
+                side: const BorderSide(color: AppColors.primaryBlue),
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+            const SizedBox(width: 12),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.home_rounded, size: 18),
+              label: const Text('Go Home', style: TextStyle(fontFamily: 'BrandonGrotesque', fontWeight: FontWeight.w700, color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryBlue,
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                elevation: 0,
+              ),
+            ),
+          ]),
+        ]),
+      ),
+    ),
+  );
 }
