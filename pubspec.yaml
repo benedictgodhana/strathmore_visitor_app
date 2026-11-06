@@ -36,6 +36,7 @@ dependencies:
   animate_do: ^4.2.0
   fluttertoast: ^8.2.12
   google_fonts: ^8.2.1
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
