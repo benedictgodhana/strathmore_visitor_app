@@ -1,11 +1,13 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:strathmore_visitor_app/screens/check_out_screen.dart';
 import 'package:strathmore_visitor_app/screens/forget_screen.dart';
+import 'package:strathmore_visitor_app/screens/goods_gate_pass_screen.dart';
 import 'package:strathmore_visitor_app/screens/lost_id_verification_screen.dart';
 import 'package:strathmore_visitor_app/screens/settings_screen.dart';
 import 'package:strathmore_visitor_app/screens/splash_screen.dart';
@@ -33,37 +35,37 @@ class MyHttpOverrides extends HttpOverrides {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  HttpOverrides.global = MyHttpOverrides(); // Set override globally
+  HttpOverrides.global = MyHttpOverrides();
 
-  // Configure Google Fonts to allow runtime fetching (optional fallback)
-
-  // Load preferences
+  // Load preferences before deciding the initial route.
   final prefs = await SharedPreferences.getInstance();
-  final token =
-      prefs.getString('token')?.isNotEmpty == true
-          ? prefs.getString('token')
-          : null;
-  final gateId =
-      prefs.getString('gate_id')?.isNotEmpty == true
-          ? prefs.getString('gate_id')
-          : null;
-  final deviceGate =
-      prefs.getString('device_gate')?.isNotEmpty == true
-          ? prefs.getString('device_gate')
-          : null;
+  final token = prefs.getString('token');
+  final gateId = prefs.getString('gate_id');
+  final deviceGate = prefs.getString('device_gate');
 
-  // Determine initial route based on token presence
-  final initialRoute =
-      (token != null && gateId != null && deviceGate != null) ? '/home' : '/';
+  // ── FIX 1: A session exists only when all three values are real.
+  //          Never call init() with empty strings — that used to throw
+  //          VisitorValidationException and leave the provider half-built.
+  final hasSession = token != null &&
+      token.isNotEmpty &&
+      gateId != null &&
+      gateId.isNotEmpty &&
+      deviceGate != null &&
+      deviceGate.isNotEmpty;
+
+  final initialRoute = hasSession ? '/home' : '/';
+
+  debugPrint(
+    '🚀 Starting app — hasSession=$hasSession, route=$initialRoute',
+  );
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create:
-              (_) =>
-                  VisitorProvider()
-                    ..init(token ?? '', gateId ?? '', deviceGate ?? ''),
+          create: (_) => hasSession
+              ? (VisitorProvider()..init(token, gateId, deviceGate))
+              : VisitorProvider(),
         ),
       ],
       child: StrathmoreBMS(initialRoute: initialRoute),
@@ -87,7 +89,7 @@ class StrathmoreBMS extends StatelessWidget {
           secondary: const Color(0xFFCC9C4A),
         ),
         visualDensity: VisualDensity.adaptivePlatformDensity,
-        fontFamily: 'BrandonGrotesque',
+        fontFamily: GoogleFonts.afacad().fontFamily,
         textTheme: Theme.of(context).textTheme,
       ),
       initialRoute: initialRoute,
@@ -104,150 +106,105 @@ class StrathmoreBMS extends StatelessWidget {
         '/settings': (context) => SettingsScreen(),
         '/visitor-details': (context) => VisitorDetailsScreen(),
         '/visitor-search': (context) => VisitorSearchScreen(),
+        '/goods-gate-pass': (context) => const GoodsGatePassScreen(),
       },
     );
   }
 
-  // Custom text theme using Brandon Grotesque fonts
-  TextTheme _buildBrandonGrotesqueTextTheme(TextTheme baseTextTheme) {
+  // Custom text theme using Afacad (Google Fonts)
+  TextTheme _buildAfacadTextTheme(TextTheme baseTextTheme) {
     return TextTheme(
-      displayLarge: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      displayLarge: GoogleFonts.afacad(
         fontWeight: FontWeight.w700,
         fontSize: 96,
         letterSpacing: -1.5,
       ),
-      displayMedium: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      displayMedium: GoogleFonts.afacad(
         fontWeight: FontWeight.w700,
         fontSize: 60,
         letterSpacing: -0.5,
       ),
-      displaySmall: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      displaySmall: GoogleFonts.afacad(
         fontWeight: FontWeight.w700,
         fontSize: 48,
         letterSpacing: 0.0,
       ),
-      headlineLarge: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      headlineLarge: GoogleFonts.afacad(
         fontWeight: FontWeight.w700,
         fontSize: 40,
         letterSpacing: 0.0,
       ),
-      headlineMedium: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      headlineMedium: GoogleFonts.afacad(
         fontWeight: FontWeight.w600,
         fontSize: 34,
         letterSpacing: 0.25,
       ),
-      headlineSmall: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      headlineSmall: GoogleFonts.afacad(
         fontWeight: FontWeight.w600,
         fontSize: 24,
         letterSpacing: 0.0,
       ),
-      titleLarge: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      titleLarge: GoogleFonts.afacad(
         fontWeight: FontWeight.w600,
         fontSize: 20,
         letterSpacing: 0.15,
       ),
-      titleMedium: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      titleMedium: GoogleFonts.afacad(
         fontWeight: FontWeight.w500,
         fontSize: 16,
         letterSpacing: 0.15,
       ),
-      titleSmall: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      titleSmall: GoogleFonts.afacad(
         fontWeight: FontWeight.w500,
         fontSize: 14,
         letterSpacing: 0.1,
       ),
-      bodyLarge: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      bodyLarge: GoogleFonts.afacad(
         fontWeight: FontWeight.w400,
         fontSize: 16,
         letterSpacing: 0.5,
       ),
-      bodyMedium: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      bodyMedium: GoogleFonts.afacad(
         fontWeight: FontWeight.w400,
         fontSize: 14,
         letterSpacing: 0.25,
       ),
-      bodySmall: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      bodySmall: GoogleFonts.afacad(
         fontWeight: FontWeight.w400,
         fontSize: 12,
         letterSpacing: 0.4,
       ),
-      labelLarge: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      labelLarge: GoogleFonts.afacad(
         fontWeight: FontWeight.w500,
         fontSize: 14,
         letterSpacing: 1.25,
       ),
-      labelMedium: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      labelMedium: GoogleFonts.afacad(
         fontWeight: FontWeight.w500,
         fontSize: 12,
         letterSpacing: 1.0,
       ),
-      labelSmall: TextStyle(
-        fontFamily: 'BrandonGrotesque',
+      labelSmall: GoogleFonts.afacad(
         fontWeight: FontWeight.w500,
         fontSize: 11,
         letterSpacing: 1.5,
       ),
     ).copyWith(
-      // Preserve any existing styles from baseTextTheme if needed
-      displayLarge: baseTextTheme.displayLarge?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      displayMedium: baseTextTheme.displayMedium?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      displaySmall: baseTextTheme.displaySmall?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      headlineLarge: baseTextTheme.headlineLarge?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      headlineMedium: baseTextTheme.headlineMedium?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      headlineSmall: baseTextTheme.headlineSmall?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      titleLarge: baseTextTheme.titleLarge?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      titleMedium: baseTextTheme.titleMedium?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      titleSmall: baseTextTheme.titleSmall?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      bodyLarge: baseTextTheme.bodyLarge?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      bodyMedium: baseTextTheme.bodyMedium?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      bodySmall: baseTextTheme.bodySmall?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      labelLarge: baseTextTheme.labelLarge?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      labelMedium: baseTextTheme.labelMedium?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
-      labelSmall: baseTextTheme.labelSmall?.merge(
-        TextStyle(fontFamily: 'BrandonGrotesque'),
-      ),
+      displayLarge: baseTextTheme.displayLarge?.merge(GoogleFonts.afacad()),
+      displayMedium: baseTextTheme.displayMedium?.merge(GoogleFonts.afacad()),
+      displaySmall: baseTextTheme.displaySmall?.merge(GoogleFonts.afacad()),
+      headlineLarge: baseTextTheme.headlineLarge?.merge(GoogleFonts.afacad()),
+      headlineMedium: baseTextTheme.headlineMedium?.merge(GoogleFonts.afacad()),
+      headlineSmall: baseTextTheme.headlineSmall?.merge(GoogleFonts.afacad()),
+      titleLarge: baseTextTheme.titleLarge?.merge(GoogleFonts.afacad()),
+      titleMedium: baseTextTheme.titleMedium?.merge(GoogleFonts.afacad()),
+      titleSmall: baseTextTheme.titleSmall?.merge(GoogleFonts.afacad()),
+      bodyLarge: baseTextTheme.bodyLarge?.merge(GoogleFonts.afacad()),
+      bodyMedium: baseTextTheme.bodyMedium?.merge(GoogleFonts.afacad()),
+      bodySmall: baseTextTheme.bodySmall?.merge(GoogleFonts.afacad()),
+      labelLarge: baseTextTheme.labelLarge?.merge(GoogleFonts.afacad()),
+      labelMedium: baseTextTheme.labelMedium?.merge(GoogleFonts.afacad()),
+      labelSmall: baseTextTheme.labelSmall?.merge(GoogleFonts.afacad()),
     );
   }
 }

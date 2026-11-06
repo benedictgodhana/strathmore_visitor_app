@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -6,6 +8,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:strathmore_visitor_app/screens/forget_screen.dart';
 import '../providers/visitor_provider.dart';
 import '../utils/constants.dart';
+import '../utils/brand_colors.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -26,10 +29,12 @@ class _LoginScreenState extends State<LoginScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   final _secureStorage = const FlutterSecureStorage();
-  
+
   // Store unique gate names to prevent duplicates
   List<String> _uniqueGateNames = [];
   Map<String, String> _gateIdMap = {};
+
+  static const Color _muted = Color(0xFF64748B);
 
   @override
   void initState() {
@@ -38,8 +43,9 @@ class _LoginScreenState extends State<LoginScreen>
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
     );
     _animationController.forward();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -47,6 +53,7 @@ class _LoginScreenState extends State<LoginScreen>
     });
   }
 
+  // ── Logic (unchanged) ─────────────────────────────────────────────────────
   Future<void> _loadCachedGate() async {
     final prefs = await SharedPreferences.getInstance();
     final cachedGate = prefs.getString('deviceGate');
@@ -64,7 +71,9 @@ class _LoginScreenState extends State<LoginScreen>
           setState(() {
             _selectedGate = _uniqueGateNames.first;
           });
-          debugPrint('⚠️ Cached gate $cachedGate not found, reset to $_selectedGate');
+          debugPrint(
+            '⚠️ Cached gate $cachedGate not found, reset to $_selectedGate',
+          );
         }
       }
     } else if (_uniqueGateNames.isNotEmpty && mounted) {
@@ -80,15 +89,15 @@ class _LoginScreenState extends State<LoginScreen>
         _isGateLoading = true;
       });
     }
-    
+
     final visitorProvider = Provider.of<VisitorProvider>(
       context,
       listen: false,
     );
-    
+
     try {
       await visitorProvider.loadGates();
-      
+
       // Create unique gate names and mapping (prevents duplicates)
       final Map<String, String> tempMap = {};
       for (var gate in visitorProvider.gates) {
@@ -98,27 +107,31 @@ class _LoginScreenState extends State<LoginScreen>
           tempMap[name] = id;
         }
       }
-      
+
       _gateIdMap = tempMap;
-      _uniqueGateNames = tempMap.keys.toList(); // Convert keys to List<String>
-      
+      _uniqueGateNames = tempMap.keys.toList();
+
       // If no gates found, add default
       if (_uniqueGateNames.isEmpty) {
-        _uniqueGateNames = ['Default Gate']; // Assign as List directly
+        _uniqueGateNames = ['Default Gate'];
         _gateIdMap = {'Default Gate': '1'};
       }
-      
+
       if (mounted) {
         setState(() {
-          if (_selectedGate == null || !_uniqueGateNames.contains(_selectedGate)) {
-            _selectedGate = _uniqueGateNames.isNotEmpty ? _uniqueGateNames.first : null;
+          if (_selectedGate == null ||
+              !_uniqueGateNames.contains(_selectedGate)) {
+            _selectedGate =
+                _uniqueGateNames.isNotEmpty ? _uniqueGateNames.first : null;
           }
         });
-        debugPrint('✅ Loaded ${_uniqueGateNames.length} unique gates: $_uniqueGateNames');
+        debugPrint(
+          '✅ Loaded ${_uniqueGateNames.length} unique gates: $_uniqueGateNames',
+        );
       }
     } catch (e) {
       debugPrint('❌ Error loading gates: $e');
-      
+
       // Use default gate as fallback
       if (mounted && _uniqueGateNames.isEmpty) {
         setState(() {
@@ -126,7 +139,7 @@ class _LoginScreenState extends State<LoginScreen>
           _gateIdMap = {'Default Gate': '1'};
           _selectedGate = 'Default Gate';
         });
-        
+
         const errorMessage = 'Failed to load gates. Using default gate.';
         showToast(errorMessage, backgroundColor: Colors.orange);
       }
@@ -149,60 +162,55 @@ class _LoginScreenState extends State<LoginScreen>
   void _showErrorAlert(String message, {VoidCallback? onRetry}) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        backgroundColor: Colors.white,
-        title: Text(
-          'Login Error',
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            fontFamily: 'BrandonGrotesque',
-            color: AppColors.error,
-          ),
-        ),
-        content: Text(
-          message,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w400,
-            fontFamily: 'BrandonGrotesque',
-            color: Colors.grey,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(
-              'OK',
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'BrandonGrotesque',
-                color: AppColors.primaryBlue,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            backgroundColor: Colors.white,
+            title: Text(
+              'Login Error',
+              style: GoogleFonts.afacad(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppColors.error,
               ),
             ),
-          ),
-          if (onRetry != null)
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                onRetry();
-              },
-              child: Text(
-                'Retry',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  fontFamily: 'BrandonGrotesque',
-                  color: AppColors.primaryBlue,
+            content: Text(
+              message,
+              style: GoogleFonts.afacad(
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
+                color: _muted,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'OK',
+                  style: GoogleFonts.afacad(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: kPrimary,
+                  ),
                 ),
               ),
-            ),
-        ],
-      ),
+              if (onRetry != null)
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    onRetry();
+                  },
+                  child: Text(
+                    'Retry',
+                    style: GoogleFonts.afacad(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: kPrimary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
     );
   }
 
@@ -235,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen>
       context,
       listen: false,
     );
-    
+
     try {
       await visitorProvider.logout();
 
@@ -248,7 +256,9 @@ class _LoginScreenState extends State<LoginScreen>
       final gateId = _gateIdMap[_selectedGate] ?? '1';
       final gateName = _selectedGate ?? 'Default Gate';
 
-      debugPrint('🔍 Attempting login with Username: ${_usernameController.text.trim()}, Gate: $gateName (ID: $gateId)');
+      debugPrint(
+        '🔍 Attempting login with Username: ${_usernameController.text.trim()}, Gate: $gateName (ID: $gateId)',
+      );
 
       await _saveGateToPreferences(gateId, gateName);
       await visitorProvider.login(
@@ -259,17 +269,17 @@ class _LoginScreenState extends State<LoginScreen>
       );
 
       debugPrint('✅ Login successful, navigating to home');
-      showToast('Login successful!', backgroundColor: AppColors.primaryBlue);
+      showToast('Login successful!', backgroundColor: kPrimary);
       _passwordController.text = '';
       _usernameController.text = '';
       await _secureStorage.delete(key: 'password');
-      
+
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
       debugPrint('❌ Login failed: $e');
-      
+
       String errorMessage;
       if (e.toString().contains('Invalid username or password')) {
         errorMessage = 'The username or password is incorrect.';
@@ -278,10 +288,12 @@ class _LoginScreenState extends State<LoginScreen>
         errorMessage = 'No valid gates available. Please try again.';
         _showErrorAlert(errorMessage, onRetry: _login);
       } else if (e.toString().contains('Request timed out')) {
-        errorMessage = 'Request timed out. Please check your network connection.';
+        errorMessage =
+            'Request timed out. Please check your network connection.';
         _showErrorAlert(errorMessage, onRetry: _login);
       } else {
-        errorMessage = 'Login failed: ${e.toString().replaceFirst('Exception: ', '')}';
+        errorMessage =
+            'Login failed: ${e.toString().replaceFirst('Exception: ', '')}';
         showToast(errorMessage, backgroundColor: AppColors.error);
       }
     } finally {
@@ -301,346 +313,475 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
+  // ── UI ────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    
-    // Build dropdown items from unique gate names (no duplicates!)
-    List<DropdownMenuItem<String>> getGateDropdownItems() {
-      if (_isGateLoading) {
-        return [
-          const DropdownMenuItem(
-            value: null,
-            child: Text(
-              'Loading gates...',
-              style: TextStyle(fontFamily: 'BrandonGrotesque'),
-            ),
-            enabled: false,
-          ),
-        ];
-      }
-      
-      if (_uniqueGateNames.isEmpty) {
-        return [
-          const DropdownMenuItem(
-            value: 'Default Gate',
-            child: Text(
-              'Default Gate',
-              style: TextStyle(fontFamily: 'BrandonGrotesque'),
-            ),
-          ),
-        ];
-      }
-      
-      // Create dropdown items from unique gate names - NO DUPLICATES
-      return _uniqueGateNames.map((gateName) {
-        return DropdownMenuItem<String>(
-          value: gateName,
-          child: Text(
-            gateName,
-            style: const TextStyle(
-              fontSize: 14,
-              fontFamily: 'BrandonGrotesque',
-              color: Colors.grey,
-            ),
-          ),
-        );
-      }).toList();
-    }
+    final size = MediaQuery.of(context).size;
+    final isTablet = size.width >= 600;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Container(
-        decoration: const BoxDecoration(color: Colors.white),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(isSmallScreen ? 16.0 : 24.0),
-              child: FadeTransition(
-                opacity: _fadeAnimation,
-                child: Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+    // Scale the logo smoothly with screen width (responsive across phones,
+    // tablets, and large tablets) instead of a single fixed breakpoint value.
+    final logoHeight = (size.width * 0.20).clamp(100.0, 190.0).toDouble();
+
+    final s = _Sizes(
+      field: isTablet ? 18 : 16,
+      label: isTablet ? 16 : 14,
+      icon: isTablet ? 26 : 22,
+      fieldPad: isTablet ? 20 : 17,
+      button: isTablet ? 19 : 17,
+    );
+    final titleSize = isTablet ? 46.0 : 36.0;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        backgroundColor: kPrimary,
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [kPrimary, kPrimaryDark],
                   ),
-                  color: Colors.white,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      color: Colors.white,
-                    ),
-                    padding: EdgeInsets.all(isSmallScreen ? 20.0 : 32.0),
-                    width: isSmallScreen ? double.infinity : 450,
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Image.asset(
-                            'assets/images/strathmore_logo.png',
-                            height: isSmallScreen ? 150 : 200,
-                            fit: BoxFit.contain,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'VISITOR MANAGEMENT',
-                            style: TextStyle(
-                              fontSize: isSmallScreen ? 24 : 28,
-                              fontWeight: FontWeight.w700,
-                              fontFamily: 'BrandonGrotesque',
-                              color: AppColors.primaryBlue,
+                ),
+              ),
+            ),
+            Positioned.fill(child: CustomPaint(painter: _BlobPainter())),
+            SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isTablet ? 40 : 24,
+                    vertical: 24,
+                  ),
+                  child: FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Logo
+                            Image.asset(
+                              'assets/images/strathmore_logo.png',
+                              height: logoHeight,
+                              fit: BoxFit.contain,
                             ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 32),
-                          TextFormField(
-                            controller: _usernameController,
-                            decoration: InputDecoration(
-                              labelText: 'Username',
-                              labelStyle: const TextStyle(
-                                fontFamily: 'BrandonGrotesque',
-                                color: Colors.grey,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.person,
-                                color: AppColors.primaryBlue,
-                              ),
-                              border: const OutlineInputBorder(),
-                              focusedBorder: OutlineInputBorder(
-                                borderSide: BorderSide(
-                                  color: AppColors.primaryBlue,
-                                  width: 2,
-                                ),
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 16,
-                                horizontal: 16,
+                            SizedBox(height: isTablet ? 56 : 40),
+                            Text(
+                              'VISITOR MANAGEMENT',
+                              style: GoogleFonts.afacad(
+                                color: kGoldLight,
+                                fontSize: isTablet ? 14 : 12.5,
+                                letterSpacing: 2,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                            style: const TextStyle(
-                              fontFamily: 'BrandonGrotesque',
-                              fontSize: 16,
-                            ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Please enter your username';
-                              }
-                              if (value.contains('<') || value.contains('>')) {
-                                return 'Invalid characters in username';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _passwordController,
-                            obscureText: _obscurePassword,
-                            decoration: InputDecoration(
-                              labelText: 'Password',
-                              labelStyle: const TextStyle(
-                                fontFamily: 'BrandonGrotesque',
-                                color: Colors.grey,
-                              ),
-                              prefixIcon: const Icon(
-                                Icons.lock,
-                                color: AppColors.primaryBlue,
-                              ),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility
-                                      : Icons.visibility_off,
-                                  color: AppColors.primaryBlue,
-                                ),
-                                onPressed: () {
-                                  if (mounted) {
-                                    setState(() {
-                                      _obscurePassword = !_obscurePassword;
-                                    });
-                                  }
-                                },
-                              ),
-                              border: const OutlineInputBorder(),
-                              focusedBorder: OutlineInputBorder(
-                                borderSide: BorderSide(
-                                  color: AppColors.primaryBlue,
-                                  width: 2,
-                                ),
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 16,
-                                horizontal: 16,
+                            const SizedBox(height: 8),
+                            Text(
+                              'Hey,\nLet\'s Sign In!',
+                              style: GoogleFonts.afacad(
+                                color: Colors.white,
+                                fontSize: titleSize,
+                                height: 1.05,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                            style: const TextStyle(
-                              fontFamily: 'BrandonGrotesque',
-                              fontSize: 16,
+                            SizedBox(height: isTablet ? 36 : 28),
+                            TextFormField(
+                              controller: _usernameController,
+                              textInputAction: TextInputAction.next,
+                              cursorColor: Colors.white,
+                              decoration: _decoration(
+                                s,
+                                'Username',
+                                Icons.person_outline_rounded,
+                              ),
+                              style: GoogleFonts.afacad(
+                                fontSize: s.field,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Please enter your username';
+                                }
+                                if (value.contains('<') ||
+                                    value.contains('>')) {
+                                  return 'Invalid characters in username';
+                                }
+                                return null;
+                              },
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your password';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          DropdownButtonFormField<String>(
-                            value: _selectedGate != null && _uniqueGateNames.contains(_selectedGate)
-                                ? _selectedGate
-                                : (_uniqueGateNames.isNotEmpty ? _uniqueGateNames.first : null),
-                            decoration: InputDecoration(
-                              labelText: 'Select Gate',
-                              labelStyle: const TextStyle(
-                                fontFamily: 'BrandonGrotesque',
-                                color: Colors.grey,
-                              ),
-                              prefixIcon: const Icon(
-                                Icons.door_front_door,
-                                color: AppColors.primaryBlue,
-                              ),
-                              border: const OutlineInputBorder(),
-                              focusedBorder: OutlineInputBorder(
-                                borderSide: BorderSide(
-                                  color: AppColors.primaryBlue,
-                                  width: 2,
-                                ),
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 16,
-                                horizontal: 16,
-                              ),
-                            ),
-                            items: getGateDropdownItems(),
-                            onChanged: _isGateLoading
-                                ? null
-                                : (value) {
-                                    if (mounted && value != null) {
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _passwordController,
+                              obscureText: _obscurePassword,
+                              textInputAction: TextInputAction.done,
+                              cursorColor: Colors.white,
+                              onFieldSubmitted: (_) {
+                                if (!_isLoading) _login();
+                              },
+                              decoration: _decoration(
+                                s,
+                                'Password',
+                                Icons.lock_outline_rounded,
+                                suffix: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                    size: s.icon,
+                                    color: Colors.white70,
+                                  ),
+                                  onPressed: () {
+                                    if (mounted) {
                                       setState(() {
-                                        _selectedGate = value;
-                                        final gateId = _gateIdMap[value] ?? '1';
-                                        debugPrint('✅ Selected gate: Name=$value, ID=$gateId');
-                                        _saveGateToPreferences(gateId, value);
+                                        _obscurePassword = !_obscurePassword;
                                       });
                                     }
                                   },
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please select a gate';
-                              }
-                              return null;
-                            },
-                            hint: const Text(
-                              'Select a gate',
-                              style: TextStyle(fontFamily: 'BrandonGrotesque'),
-                            ),
-                          ),
-                          if (_uniqueGateNames.isEmpty && !_isGateLoading) ...[
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: _loadGates,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primaryBlue,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
                                 ),
                               ),
-                              child: const Text(
-                                'Retry Loading Gates',
-                                style: TextStyle(
-                                  fontSize: 14,
+                              style: GoogleFonts.afacad(
+                                fontSize: s.field,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please enter your password';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              value:
+                                  _selectedGate != null &&
+                                          _uniqueGateNames.contains(
+                                            _selectedGate,
+                                          )
+                                      ? _selectedGate
+                                      : (_uniqueGateNames.isNotEmpty
+                                          ? _uniqueGateNames.first
+                                          : null),
+                              decoration: _decoration(
+                                s,
+                                'Select Gate',
+                                Icons.door_front_door_outlined,
+                              ),
+                              icon: Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: Colors.white70,
+                                size: s.icon,
+                              ),
+                              dropdownColor: kPrimaryDark,
+                              borderRadius: BorderRadius.zero,
+                              style: GoogleFonts.afacad(
+                                fontSize: s.field,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              items: _gateItems(),
+                              onChanged:
+                                  _isGateLoading
+                                      ? null
+                                      : (value) {
+                                        if (mounted && value != null) {
+                                          setState(() {
+                                            _selectedGate = value;
+                                            final gateId =
+                                                _gateIdMap[value] ?? '1';
+                                            debugPrint(
+                                              '✅ Selected gate: Name=$value, ID=$gateId',
+                                            );
+                                            _saveGateToPreferences(
+                                              gateId,
+                                              value,
+                                            );
+                                          });
+                                        }
+                                      },
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please select a gate';
+                                }
+                                return null;
+                              },
+                              hint: Text(
+                                'Select a gate',
+                                style: GoogleFonts.afacad(
+                                  fontSize: s.field,
+                                  color: Colors.white70,
                                   fontWeight: FontWeight.w600,
-                                  fontFamily: 'BrandonGrotesque',
-                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            if (_uniqueGateNames.isEmpty &&
+                                !_isGateLoading) ...[
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                onPressed: _loadGates,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  side: const BorderSide(color: Colors.white54),
+                                  shape: const RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.zero,
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.refresh_rounded,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  'Retry Loading Gates',
+                                  style: GoogleFonts.afacad(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (context) => ForgotPasswordScreen(),
+                                    ),
+                                  );
+                                },
+                                child: Text(
+                                  'Forgot Password?',
+                                  style: GoogleFonts.afacad(
+                                    fontSize: s.label,
+                                    color: Colors.white70,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: _isLoading ? null : _login,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: kGold,
+                                  foregroundColor: kPrimaryDark,
+                                  disabledBackgroundColor: kGold.withOpacity(
+                                    0.6,
+                                  ),
+                                  elevation: 0,
+                                  padding: EdgeInsets.symmetric(
+                                    vertical: s.fieldPad,
+                                  ),
+                                  shape: const RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.zero,
+                                  ),
+                                ),
+                                child:
+                                    _isLoading
+                                        ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            color: kPrimaryDark,
+                                            strokeWidth: 3,
+                                          ),
+                                        )
+                                        : Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              'Login',
+                                              style: GoogleFonts.afacad(
+                                                fontSize: s.button,
+                                                fontWeight: FontWeight.w800,
+                                                color: kPrimaryDark,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            const Icon(
+                                              Icons.arrow_forward_rounded,
+                                              size: 20,
+                                              color: kPrimaryDark,
+                                            ),
+                                          ],
+                                        ),
+                              ),
+                            ),
+                            SizedBox(height: isTablet ? 36 : 28),
+                            Center(
+                              child: Text(
+                                AppStrings.universityName,
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.afacad(
+                                  color: Colors.white54,
+                                  fontSize: 13,
+                                  letterSpacing: 0.4,
                                 ),
                               ),
                             ),
                           ],
-                          const SizedBox(height: 16),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => ForgotPasswordScreen(),
-                                  ),
-                                );
-                              },
-                              child: Text(
-                                'Forgot Password?',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontFamily: 'BrandonGrotesque',
-                                  color: AppColors.primaryBlue,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          _isLoading
-                              ? CircularProgressIndicator(
-                                  color: AppColors.primaryBlue,
-                                  strokeWidth: 3,
-                                )
-                              : ElevatedButton(
-                                  onPressed: _login,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    foregroundColor: Colors.white,
-                                    padding: EdgeInsets.zero,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  child: Ink(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          AppColors.primaryBlue,
-                                          AppColors.primaryBlue.withOpacity(0.8),
-                                        ],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                      ),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Container(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: isSmallScreen ? 40 : 60,
-                                        vertical: 16,
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: const Text(
-                                        'Login',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                          fontFamily: 'BrandonGrotesque',
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
+
+  InputDecoration _decoration(
+    _Sizes s,
+    String hint,
+    IconData icon, {
+    Widget? suffix,
+  }) {
+    OutlineInputBorder box(Color c, [double w = 1.5]) => OutlineInputBorder(
+      borderRadius: BorderRadius.zero,
+      borderSide: BorderSide(color: c, width: w),
+    );
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: GoogleFonts.afacad(
+        fontSize: s.field,
+        color: Colors.white70,
+        fontWeight: FontWeight.w600,
+      ),
+      prefixIcon: Icon(icon, size: s.icon, color: Colors.white70),
+      suffixIcon: suffix,
+      filled: true,
+      fillColor: Colors.white.withOpacity(0.16),
+      border: box(Colors.white.withOpacity(0.45)),
+      enabledBorder: box(Colors.white.withOpacity(0.45)),
+      focusedBorder: box(kGold, 2),
+      errorBorder: box(kGoldLight),
+      focusedErrorBorder: box(kGoldLight, 2),
+      errorStyle: GoogleFonts.afacad(fontSize: 13, color: kGoldLight),
+      contentPadding: EdgeInsets.symmetric(
+        vertical: s.fieldPad,
+        horizontal: 20,
+      ),
+    );
+  }
+
+  List<DropdownMenuItem<String>> _gateItems() {
+    if (_isGateLoading) {
+      return [
+        DropdownMenuItem(
+          value: null,
+          child: Text(
+            'Loading gates...',
+            style: GoogleFonts.afacad(
+              color: Colors.white70,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          enabled: false,
+        ),
+      ];
+    }
+    if (_uniqueGateNames.isEmpty) {
+      return [
+        DropdownMenuItem(
+          value: 'Default Gate',
+          child: Text(
+            'Default Gate',
+            style: GoogleFonts.afacad(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ];
+    }
+    return _uniqueGateNames.map((gateName) {
+      return DropdownMenuItem<String>(
+        value: gateName,
+        child: Text(
+          gateName,
+          style: GoogleFonts.afacad(
+            fontSize: 16,
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }).toList();
+  }
+}
+
+/// Organic gold blob (top-right) + soft light-blue circle (bottom-left),
+/// echoing the reference design in the brand palette.
+class _BlobPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final bw = (w * 0.5).clamp(240.0, 560.0);
+
+    final gold =
+        Path()
+          ..moveTo(w - bw, 0)
+          ..cubicTo(
+            w - bw * 0.97,
+            bw * 0.34,
+            w - bw * 0.6,
+            bw * 0.42,
+            w - bw * 0.32,
+            bw * 0.62,
+          )
+          ..cubicTo(
+            w - bw * 0.12,
+            bw * 0.78,
+            w - bw * 0.02,
+            bw * 0.56,
+            w,
+            bw * 0.42,
+          )
+          ..lineTo(w, 0)
+          ..close();
+    canvas.drawPath(gold, Paint()..color = kGold);
+
+    canvas.drawCircle(
+      Offset(0, size.height),
+      w * 0.38,
+      Paint()..color = kPrimaryLight.withOpacity(0.35),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _Sizes {
+  final double field;
+  final double label;
+  final double icon;
+  final double fieldPad;
+  final double button;
+
+  const _Sizes({
+    required this.field,
+    required this.label,
+    required this.icon,
+    required this.fieldPad,
+    required this.button,
+  });
 }

@@ -35,6 +35,7 @@ dependencies:
   jwt_decoder: ^2.0.1
   animate_do: ^4.2.0
   fluttertoast: ^8.2.12
+  google_fonts: ^8.2.1
 
 dev_dependencies:
   flutter_test:
@@ -47,20 +48,12 @@ flutter:
 
   assets:
     - assets/images/strathmore_logo.png
-
-  fonts:
-    - family: BrandonGrotesque
-      fonts:
-        - asset: assets/fonts/BrandonGrotesque-Light.otf
-          weight: 300
-        - asset: assets/fonts/BrandonGrotesque-Regular.otf
-          weight: 400
-        - asset: assets/fonts/BrandonGrotesque-Medium.otf
-          weight: 500
-        - asset: assets/fonts/BrandonGrotesque-Bold.otf
-          weight: 700
-        - asset: assets/fonts/BrandonGrotesque-Black.otf
-          weight: 900
+    - assets/images/visitor-man.png
+    - assets/images/checkout.png
+    - assets/images/id.png
+    - assets/images/new_visitor.png
+    - assets/images/visitors.png
+    - assets/images/user.png
 
 flutter_icons:
   android: true

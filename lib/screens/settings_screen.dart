@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -177,8 +178,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           barrierDismissible: false,
           builder: (BuildContext context) {
             return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.zero,
               ),
               backgroundColor: isDarkMode ? Color(0xFF1E293B) : Colors.white,
               title: Row(
@@ -187,9 +188,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                   SizedBox(width: 8),
                   Text(
                     'Confirm Logout',
-                    style: TextStyle(
+                    style: GoogleFonts.afacad(
                       fontWeight: FontWeight.w700,
-                      fontFamily: 'BrandonGrotesque',
                       color: isDarkMode ? Colors.white : Color(0xFF0F172A),
                     ),
                   ),
@@ -197,9 +197,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               content: Text(
                 'Are you sure you want to log out?',
-                style: TextStyle(
+                style: GoogleFonts.afacad(
                   fontSize: 14,
-                  fontFamily: 'BrandonGrotesque',
                   color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
                 ),
               ),
@@ -208,8 +207,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   onPressed: () => Navigator.of(context).pop(false),
                   child: Text(
                     'Cancel',
-                    style: TextStyle(
-                      fontFamily: 'BrandonGrotesque',
+                    style: GoogleFonts.afacad(
                       color: AppColors.primaryBlue,
                       fontWeight: FontWeight.w600,
                     ),
@@ -222,8 +220,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   },
                   child: Text(
                     'Logout',
-                    style: TextStyle(
-                      fontFamily: 'BrandonGrotesque',
+                    style: GoogleFonts.afacad(
                       color: AppColors.warning,
                       fontWeight: FontWeight.w600,
                     ),
@@ -303,7 +300,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.zero,
           border: Border.all(color: color.withOpacity(0.3)),
         ),
         child: Row(
@@ -313,9 +310,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             Expanded(
               child: Text(
                 message,
-                style: TextStyle(
+                style: GoogleFonts.afacad(
                   fontSize: isSmallScreen ? 13 : 14,
-                  fontFamily: 'BrandonGrotesque',
                   color: color,
                   fontWeight: FontWeight.w500,
                 ),
@@ -324,6 +320,33 @@ class _SettingsScreenState extends State<SettingsScreen>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: AppColors.primaryBlue),
+        SizedBox(width: 8),
+        Text(
+          title,
+          style: GoogleFonts.afacad(
+            fontWeight: FontWeight.w700,
+            color: AppColors.primaryBlue,
+            fontSize: 15,
+            letterSpacing: 0.5,
+          ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Container(
+              height: 1,
+              color: isDarkMode ? Color(0xFF334155) : Colors.grey.shade300,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -343,7 +366,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
           decoration: BoxDecoration(
             color: isDarkMode ? Color(0xFF1E293B) : Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.zero,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.1),
@@ -367,10 +390,9 @@ class _SettingsScreenState extends State<SettingsScreen>
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(
+                  style: GoogleFonts.afacad(
                     fontSize: isSmallScreen ? 14 : 16,
                     fontWeight: FontWeight.w600,
-                    fontFamily: 'BrandonGrotesque',
                     color: isDarkMode ? Colors.white : Color(0xFF0F172A),
                   ),
                 ),
@@ -409,8 +431,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               backgroundColor: buttonColor ?? AppColors.primaryBlue,
               foregroundColor: Colors.white,
               padding: EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.zero,
               ),
               elevation: 4,
             ),
@@ -421,10 +443,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                 SizedBox(width: 8),
                 Text(
                   title,
-                  style: TextStyle(
+                  style: GoogleFonts.afacad(
                     fontSize: isSmallScreen ? 14 : 16,
                     fontWeight: FontWeight.w600,
-                    fontFamily: 'BrandonGrotesque',
                   ),
                 ),
               ],
@@ -445,7 +466,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
           decoration: BoxDecoration(
             color: isDarkMode ? Color(0xFF1E293B) : Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.zero,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.1),
@@ -461,16 +482,6 @@ class _SettingsScreenState extends State<SettingsScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'User Profile',
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 16 : 18,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'BrandonGrotesque',
-                  color: isDarkMode ? Colors.white : AppColors.primaryBlue,
-                ),
-              ),
-              SizedBox(height: 16),
               Center(
                 child: Semantics(
                   label: 'User avatar',
@@ -527,7 +538,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 icon: Icons.work_outline,
                 isSmallScreen: isSmallScreen,
               ),
-             
+
               SizedBox(height: 12),
               _buildProfileField(
                 label: 'Device Gate',
@@ -564,19 +575,17 @@ class _SettingsScreenState extends State<SettingsScreen>
               children: [
                 Text(
                   label,
-                  style: TextStyle(
+                  style: GoogleFonts.afacad(
                     fontSize: isSmallScreen ? 12 : 14,
-                    fontFamily: 'BrandonGrotesque',
                     color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 Text(
                   value,
-                  style: TextStyle(
+                  style: GoogleFonts.afacad(
                     fontSize: isSmallScreen ? 14 : 16,
                     fontWeight: FontWeight.w600,
-                    fontFamily: 'BrandonGrotesque',
                     color: isDarkMode ? Colors.white : Color(0xFF0F172A),
                   ),
                 ),
@@ -629,11 +638,10 @@ class _SettingsScreenState extends State<SettingsScreen>
 
     return Scaffold(
       backgroundColor: isDarkMode ? Color(0xFF0A0E21) : Color(0xFFF8FAFF),
-      extendBodyBehindAppBar: true,
       appBar: CustomAppBar(
         title: 'Settings',
         color: Colors.white,
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppColors.primaryBlue,
         showBackButton: true,
         showNotifications: true,
         showAccount: true,
@@ -654,21 +662,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
       body: Stack(
         children: [
-          AnimatedContainer(
-            duration: Duration(milliseconds: 500),
-            height: 200,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.primaryBlue, AppColors.secondaryBlue],
-              ),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(30),
-                bottomRight: Radius.circular(30),
-              ),
-            ),
-          ),
           Align(
             alignment: Alignment.topCenter,
             child: ConfettiWidget(
@@ -690,37 +683,6 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               slivers: [
                 SliverToBoxAdapter(child: SizedBox(height: 20)),
-                SliverPadding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isSmallScreen ? 16 : 24,
-                  ),
-                  sliver: SliverToBoxAdapter(
-                    child: FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: SlideTransition(
-                        position: _slideAnimation,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Settings',
-                              style: TextStyle(
-                                fontSize: isSmallScreen ? 24 : 28,
-                                fontWeight: FontWeight.w700,
-                                fontFamily: 'BrandonGrotesque',
-                                color:
-                                    isDarkMode
-                                        ? Colors.white
-                                        : Color(0xFF0F172A),
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
                 SliverPadding(
                   padding: EdgeInsets.symmetric(
                     horizontal: isSmallScreen ? 16 : 24,
@@ -746,9 +708,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                             false,
                             isSmallScreen,
                           ),
-                        SizedBox(height: 16),
+                        _buildSectionHeader('Profile', Icons.person_outline),
+                        SizedBox(height: 12),
                         _buildProfileSection(isSmallScreen),
-                        SizedBox(height: 16),
+                        SizedBox(height: 24),
+                        _buildSectionHeader('Preferences', Icons.tune),
+                        SizedBox(height: 12),
                         _buildSettingTile(
                           title: 'Dark Mode',
                           icon:
@@ -767,6 +732,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                           isSmallScreen: isSmallScreen,
                         ),
                         SizedBox(height: 24),
+                        _buildSectionHeader(
+                          'Account',
+                          Icons.manage_accounts_outlined,
+                        ),
+                        SizedBox(height: 12),
                         _buildActionButton(
                           title: 'Save Settings',
                           icon: Icons.save,
@@ -794,7 +764,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                       isDarkMode
                                           ? Color(0xFF334155)
                                           : Colors.grey[200],
-                                  borderRadius: BorderRadius.circular(20),
+                                  borderRadius: BorderRadius.zero,
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -810,9 +780,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                                     SizedBox(width: 8),
                                     Text(
                                       'Secure Access System',
-                                      style: TextStyle(
+                                      style: GoogleFonts.afacad(
                                         fontSize: 12,
-                                        fontFamily: 'BrandonGrotesque',
                                         color:
                                             isDarkMode
                                                 ? Color(0xFF94A3B8)
@@ -826,9 +795,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                               SizedBox(height: 8),
                               Text(
                                 AppStrings.universityName,
-                                style: TextStyle(
+                                style: GoogleFonts.afacad(
                                   fontSize: 12,
-                                  fontFamily: 'BrandonGrotesque',
                                   color:
                                       isDarkMode
                                           ? Color(0xFF94A3B8)

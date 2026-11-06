@@ -6,10 +6,7 @@ class AdminDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Admin Dashboard'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Admin Dashboard'), centerTitle: true),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: GridView.count(
@@ -79,7 +76,10 @@ class _DashboardCard extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 label,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),

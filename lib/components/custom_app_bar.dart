@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../utils/constants.dart';
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -42,10 +43,9 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
       leading: null,
       title: Text(
         title,
-        style: TextStyle(
+        style: GoogleFonts.afacad(
           fontSize: 20,
           fontWeight: FontWeight.w700,
-          fontFamily: 'BrandonGrotesque',
           color: color,
         ),
       ),
@@ -70,9 +70,8 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                     ),
                     child: Text(
                       notificationCount.toString(),
-                      style: TextStyle(
+                      style: GoogleFonts.afacad(
                         fontSize: 10,
-                        fontFamily: 'BrandonGrotesque',
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
                       ),
@@ -125,10 +124,9 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                       SizedBox(width: 10),
                       Text(
                         'Notifications',
-                        style: TextStyle(
+                        style: GoogleFonts.afacad(
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
-                          fontFamily: 'BrandonGrotesque',
                           color: AppColors.primaryBlue,
                         ),
                       ),
@@ -144,9 +142,8 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                   child: Center(
                     child: Text(
                       'No new notifications',
-                      style: TextStyle(
+                      style: GoogleFonts.afacad(
                         fontSize: 16,
-                        fontFamily: 'BrandonGrotesque',
                         color: Colors.grey[600],
                       ),
                     ),

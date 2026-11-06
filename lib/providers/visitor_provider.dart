@@ -199,8 +199,13 @@ class VisitorProvider extends ChangeNotifier {
     }
   }
 
-  /// Validates the current authentication token
-  Future<bool> _validateToken() async {
+  // ── FIX 3: _validateToken returns bool? so callers can distinguish
+  //          "definitely invalid" (false) from "couldn't check" (null).
+  /// Returns:
+  ///   true  → token is valid
+  ///   false → server explicitly rejected the token (401/403)
+  ///   null  → couldn't determine (network error, timeout, 5xx)
+  Future<bool?> _validateToken() async {
     final token = await _getTokenFromPreferences();
     if (token == null || token.isEmpty) {
       debugPrint('⚠️ No valid token found for validation');
@@ -217,20 +222,25 @@ class VisitorProvider extends ChangeNotifier {
               'Accept': 'application/json',
             },
           )
-          .timeout(Duration(seconds: 5));
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         debugPrint('✅ Token validated successfully');
         return true;
-      } else {
-        debugPrint(
-          '🔑 Token validation failed: Status ${response.statusCode}, Body: ${response.body}',
-        );
+      }
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        debugPrint('🔑 Token definitively rejected: ${response.statusCode}');
         return false;
       }
+      // 5xx, 429, etc. — inconclusive
+      debugPrint(
+        '⚠️ Token validation inconclusive: ${response.statusCode}, Body: ${response.body}',
+      );
+      return null;
     } catch (e) {
-      debugPrint('🔑 Token validation failed: $e');
-      throw VisitorAuthException('Token validation failed: $e');
+      // Timeout, SocketException — we don't know if the token is valid
+      debugPrint('⚠️ Token validation network error (inconclusive): $e');
+      return null;
     }
   }
 
@@ -334,7 +344,8 @@ class VisitorProvider extends ChangeNotifier {
         };
       } else if (response.statusCode == 401) {
         debugPrint('❌ Authentication failed: Invalid or expired token');
-        await _clearAuthenticationState();
+        // ── FIX 5: definitive server rejection → wipe credentials
+        await _clearAuthenticationState(wipeCredentials: true);
         throw VisitorAuthException(
           'Authentication failed: Invalid or expired token',
         );
@@ -374,11 +385,12 @@ class VisitorProvider extends ChangeNotifier {
     _gateId = gateId;
 
     try {
-      final isValidToken = await _validateToken();
-      if (!isValidToken) {
+      final validity = await _validateToken();
+      if (validity == false) {
         debugPrint('⚠️ Invalid or expired token');
         throw VisitorAuthException('Session expired. Please log in again.');
       }
+      // null → inconclusive, continue anyway
     } catch (e) {
       debugPrint('❌ Token validation error: $e');
       throw VisitorAuthException('Failed to validate token: $e');
@@ -501,6 +513,8 @@ class VisitorProvider extends ChangeNotifier {
     }
   }
 
+  // ── FIX 4: init() no longer throws on empty params, and does NOT wipe
+  //          credentials on inconclusive validation (network error).
   /// Initializes the provider with authentication data
   Future<void> init(String token, String gateId, String deviceGate) async {
     if (_isDisposed) return;
@@ -508,43 +522,54 @@ class VisitorProvider extends ChangeNotifier {
     if (!_validateInput(token) ||
         !_validateInput(gateId) ||
         !_validateInput(deviceGate)) {
-      throw VisitorValidationException('Invalid initialization parameters');
-    }
-
-    _token = token;
-    _gateId = gateId;
-    _deviceGate = deviceGate;
-
-    await _loadCachedData();
-    await debugSharedPreferences();
-
-    if (isAuthenticated) {
-      _isLoading = true;
-      _safeNotifyListeners();
-      try {
-        final isTokenValid = await _validateToken();
-        if (!isTokenValid) {
-          debugPrint('🔑 Token validation failed, clearing authentication');
-          await _clearAuthenticationState();
-          _isLoading = false;
-          _safeNotifyListeners();
-          return;
-        }
-
-        await refreshData();
-      } catch (e) {
-        debugPrint('❌ Initialization error: $e');
-        if (e is VisitorAuthException) {
-          await _clearAuthenticationState();
-        }
-      } finally {
-        _isLoading = false;
-        _safeNotifyListeners();
+      // Fall back to whatever is in SharedPreferences.
+      debugPrint('⚠️ init() called with empty params — trying prefs');
+      await _loadCachedData();
+      if (!isAuthenticated) {
+        debugPrint('⚠️ init() aborted: no usable session');
+        return;
       }
     } else {
-      await loadGates().catchError((e) {
-        debugPrint('❌ Error loading gates: $e');
-      });
+      _token = token;
+      _gateId = gateId;
+      _deviceGate = deviceGate;
+      await _loadCachedData();
+    }
+
+    await debugSharedPreferences();
+
+    if (!isAuthenticated) return;
+
+    _isLoading = true;
+    _safeNotifyListeners();
+
+    try {
+      final validity = await _validateToken();
+
+      if (validity == false) {
+        // Definitive rejection — safe to wipe
+        debugPrint('🔑 Token explicitly rejected, clearing auth');
+        await _clearAuthenticationState(wipeCredentials: true);
+        return;
+      }
+
+      if (validity == null) {
+        // Inconclusive — keep the token, try to refresh anyway.
+        // If refreshData gets a real 401 it will clear the session then.
+        debugPrint(
+          '⚠️ Could not confirm token; proceeding with cached session',
+        );
+      }
+
+      await refreshData();
+    } catch (e) {
+      debugPrint('❌ Initialization error: $e');
+      // Do NOT clear auth on arbitrary exceptions here.
+      if (e is VisitorAuthException) {
+        // A genuine auth exception (thrown by refreshData on 401) — already
+        // handled inside refreshData. Nothing to do here.
+      }
+    } finally {
       _isLoading = false;
       _safeNotifyListeners();
     }
@@ -725,7 +750,7 @@ class VisitorProvider extends ChangeNotifier {
       } else {
         _handleApiError(response, 'Failed to load gates');
         if (response.statusCode == 401) {
-          await _clearAuthenticationState();
+          await _clearAuthenticationState(wipeCredentials: true);
         }
       }
     } catch (e) {
@@ -791,7 +816,7 @@ class VisitorProvider extends ChangeNotifier {
       } else {
         _handleApiError(response, 'Failed to load destinations');
         if (response.statusCode == 401) {
-          await _clearAuthenticationState();
+          await _clearAuthenticationState(wipeCredentials: true);
         }
       }
     } catch (e) {
@@ -865,7 +890,7 @@ class VisitorProvider extends ChangeNotifier {
       } else {
         _handleApiError(response, 'Failed to load visitor tags');
         if (response.statusCode == 401) {
-          await _clearAuthenticationState();
+          await _clearAuthenticationState(wipeCredentials: true);
         }
       }
     } catch (e) {
@@ -964,11 +989,12 @@ class VisitorProvider extends ChangeNotifier {
     _gateId = gateId;
 
     try {
-      final isValidToken = await _validateToken();
-      if (!isValidToken) {
+      final validity = await _validateToken();
+      if (validity == false) {
         debugPrint('⚠️ Invalid or expired token');
         throw VisitorAuthException('Session expired. Please log in again.');
       }
+      // null → inconclusive, continue anyway
     } catch (e) {
       debugPrint('❌ Token validation error: $e');
       throw VisitorAuthException('Failed to validate token: $e');
@@ -1011,11 +1037,13 @@ class VisitorProvider extends ChangeNotifier {
         if (visitorId != null) 'visitor_id': visitorId,
         if (visitorId == null) ...{
           'name': _sanitizeInput(visitor.name),
-          'phone_number':
-              visitor.phoneNumber?.trim().replaceFirst(RegExp(r'^\+254'), '') ??
-              '',
+          'phone_number': visitor.phoneNumber.trim().replaceFirst(
+            RegExp(r'^\+254'),
+            '',
+          ),
           'phone_country_code': visitor.phoneCountryCode ?? '+254',
-          'is_minor': visitor.isMinor ?? false,
+          'country': _sanitizeInput(visitor.country),
+          'is_minor': visitor.isMinor,
           'guardian_phone':
               visitor.isMinor == true && visitor.guardianPhone != null
                   ? visitor.guardianPhone!.trim().replaceFirst(
@@ -1228,15 +1256,18 @@ class VisitorProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ Logout error: $e');
     } finally {
-      await _clearAuthenticationState();
+      // ── FIX 5: explicit user logout wipes credentials from prefs.
+      await _clearAuthenticationState(wipeCredentials: true);
       await _clearStoredData();
       _isLoading = false;
       _safeNotifyListeners();
     }
   }
 
-  /// Clears authentication state
-  Future<void> _clearAuthenticationState() async {
+  // ── FIX 5: _clearAuthenticationState has a wipeCredentials flag.
+  //          In-memory state is always cleared; prefs are only touched
+  //          when the caller knows the token is genuinely dead.
+  Future<void> _clearAuthenticationState({bool wipeCredentials = false}) async {
     _token = null;
     _deviceGate = null;
     _gateId = null;
@@ -1254,11 +1285,26 @@ class VisitorProvider extends ChangeNotifier {
     _checkedInCount = 0;
     _checkedOutCount = 0;
     _todaysTotalCount = 0;
+
+    if (wipeCredentials) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('token');
+      await prefs.remove('gate_id');
+      await prefs.remove('device_gate');
+      await prefs.remove('userName');
+      await prefs.remove('userEmail');
+      await prefs.remove('userPhone');
+      await prefs.remove('userRole');
+      await prefs.remove('userPosition');
+      await prefs.remove('userAvatarUrl');
+      debugPrint('✅ Cleared credentials from SharedPreferences');
+    }
+
     await _saveCachedData();
-    debugPrint('✅ Cleared authentication state');
+    debugPrint('✅ Cleared authentication state (wipeCredentials=$wipeCredentials)');
   }
 
-  /// Clears stored data from SharedPreferences
+  /// Clears stored data from SharedPreferences (used only on explicit logout)
   Future<void> _clearStoredData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1309,7 +1355,7 @@ class VisitorProvider extends ChangeNotifier {
       );
 
       debugPrint(
-        '📋 Checked-in visitors response: status=${response.statusCode}, body=${response.body}',
+        '📋 Checked-in visitors response: status=${response.statusCode}, body_length=${response.body.length}',
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1381,6 +1427,217 @@ class VisitorProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('❌ Error loading checked-in visitors: $e');
+      rethrow;
+    } finally {
+      _isLoading = false;
+      _safeNotifyListeners();
+    }
+  }
+
+  Future<void> loadAllVisitors() async {
+    if (_isDisposed) return;
+
+    final token = await _getTokenFromPreferences();
+    final gateId = (await SharedPreferences.getInstance()).getString('gate_id');
+    final deviceGate =
+        (await SharedPreferences.getInstance()).getString('device_gate') ??
+        'Gate A';
+    if (token == null || gateId == null) {
+      debugPrint(
+        '⚠️ Cannot load visitors: No authentication token or gate ID found',
+      );
+      throw VisitorAuthException('No authentication token or gate ID found');
+    }
+
+    _token = token;
+    _gateId = gateId;
+    _deviceGate = deviceGate;
+
+    _isLoading = true;
+    _safeNotifyListeners();
+    try {
+      final headers = {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+
+      final candidateUris = [
+        Uri.parse(
+          '${AppStrings.apiBaseUrl}/api/visitors',
+        ).replace(queryParameters: {'gate_id': gateId}),
+        Uri.parse(
+          '${AppStrings.apiBaseUrl}/api/visitors/checked-in',
+        ).replace(queryParameters: {'gate_id': gateId}),
+      ];
+
+      http.Response? response;
+      Uri? successfulUri;
+      for (final uri in candidateUris) {
+        debugPrint('📡 Sending request to $uri with headers: $headers');
+        final attemptedResponse = await _retryApiCall(
+          () => http.get(uri, headers: headers),
+          maxRetries: 1,
+          requestTimeout: const Duration(seconds: 30),
+        );
+
+        if (attemptedResponse.statusCode == 200) {
+          response = attemptedResponse;
+          successfulUri = uri;
+          break;
+        }
+
+        if (attemptedResponse.statusCode == 401) {
+          response = attemptedResponse;
+          break;
+        }
+
+        if (attemptedResponse.statusCode == 404 ||
+            attemptedResponse.statusCode == 405) {
+          debugPrint(
+            '⚠️ Endpoint not available for GET: $uri (status ${attemptedResponse.statusCode})',
+          );
+          continue;
+        }
+
+        response = attemptedResponse;
+        break;
+      }
+
+      if (response == null) {
+        throw VisitorNetworkException(
+          'Failed to load visitors: no endpoint responded',
+        );
+      }
+
+      debugPrint(
+        '📋 Visitors response from ${successfulUri ?? 'fallback endpoint'}: status=${response.statusCode}, body_length=${response.body.length}',
+      );
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        dynamic rawVisitorList;
+
+        if (decoded is List) {
+          rawVisitorList = decoded;
+        } else if (decoded is Map<String, dynamic>) {
+          rawVisitorList =
+              decoded['visitors'] ??
+              decoded['data'] ??
+              decoded['visits'] ??
+              decoded['results'] ??
+              [];
+
+          if (rawVisitorList is Map<String, dynamic>) {
+            rawVisitorList =
+                rawVisitorList['data'] ??
+                rawVisitorList['visitors'] ??
+                rawVisitorList['results'] ??
+                [];
+          }
+        }
+
+        if (rawVisitorList is! List || rawVisitorList.isEmpty) {
+          _visitors = [];
+          _checkedInCount = 0;
+          debugPrint('⚠️ No visitors found in response');
+        } else {
+          _visitors =
+              rawVisitorList
+                  .whereType<Map>()
+                  .map((item) {
+                    final visit = Map<String, dynamic>.from(item);
+                    final visitorBase = Map<String, dynamic>.from(
+                      visit['visitor'] is Map
+                          ? visit['visitor']
+                          : <String, dynamic>{},
+                    );
+
+                    final visitorMap =
+                        visitorBase..addAll({
+                          'id':
+                              (visit['visitor_id'] ?? visit['id'])
+                                  ?.toString() ??
+                              '',
+                          'gate_id': (visit['gate_id'] ?? gateId)?.toString(),
+                          'gate': visit['gate_name']?.toString() ?? deviceGate,
+                          'visitor_tag_id': visit['visitor_tag_id']?.toString(),
+                          'tag_number': visit['visitor_tag_number']?.toString(),
+                          'destination_id':
+                              visit['visitor_destination_id']?.toString(),
+                          'destination':
+                              visit['visitor_destination_name']?.toString(),
+                          'visit_type':
+                              visit['host_type']?.toString() ??
+                              visit['visit_type']?.toString(),
+                          'check_in_time':
+                              visit['check_in_time']?.toString() ??
+                              visit['created_at']?.toString(),
+                          'check_out_time': visit['check_out_time']?.toString(),
+                          'host':
+                              visit['host_type'] == 'staff'
+                                  ? {
+                                    'name': visit['host']?.toString() ?? 'N/A',
+                                    'phone':
+                                        visit['host_phone']?.toString() ??
+                                        'N/A',
+                                    'email':
+                                        visit['host_email']?.toString() ??
+                                        'N/A',
+                                    'department':
+                                        visit['host_department']?.toString() ??
+                                        'N/A',
+                                    'position':
+                                        visit['host_position']?.toString() ??
+                                        'N/A',
+                                  }
+                                  : null,
+                          'office_name': visit['office_name']?.toString(),
+                          'office_phone': visit['office_phone']?.toString(),
+                          'office_email': visit['office_email']?.toString(),
+                          'office_department':
+                              visit['office_department']?.toString(),
+                          'office_contact_person':
+                              visit['office_contact_person']?.toString(),
+                          'had_appointment': visit['had_appointment'],
+                          'appointment_details':
+                              visit['appointment_details']?.toString(),
+                          'remarks': visit['remarks']?.toString(),
+                          'vehicle_type': visit['vehicle_type']?.toString(),
+                          'vehicle_registration':
+                              visit['vehicle_registration']?.toString(),
+                          'gender':
+                              (visit['visitor'] is Map)
+                                  ? visit['visitor']['gender']?.toString()
+                                  : null,
+                        });
+
+                    return Visitor.fromMap(visitorMap);
+                  })
+                  .whereType<Visitor>()
+                  .toList();
+
+          _checkedInCount =
+              _visitors.where((visitor) => visitor.checkOutTime == null).length;
+          debugPrint(
+            '👥 Loaded ${_visitors.length} visitors for gate \'$deviceGate\' (ID: $gateId)',
+          );
+        }
+
+        await _saveCachedData();
+      } else {
+        _handleApiError(response, 'Failed to load visitors');
+        if (response.statusCode == 401) {
+          debugPrint('⚠️ 401 Unauthorized: Token may be invalid or expired');
+          throw VisitorAuthException(
+            'Authentication failed: Invalid or expired token',
+          );
+        }
+        throw VisitorNetworkException(
+          'Failed to load visitors: ${response.statusCode} - ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading visitors: $e');
       rethrow;
     } finally {
       _isLoading = false;
@@ -1460,97 +1717,109 @@ class VisitorProvider extends ChangeNotifier {
   }
 
   /// Gets an available visitor tag ID
- /// Gets an available visitor tag ID
-Future<int?> getAvailableVisitorTagId({String? gateId}) async {
-  try {
-    final token = await _getTokenFromPreferences();
-    final currentGateId = gateId ?? _gateId;
-    
-    debugPrint('🔍 Fetching available tag - Token: ${token != null ? "Present" : "NULL"}, GateId: $currentGateId');
-    
-    if (token == null || currentGateId == null) {
-      debugPrint('⚠️ Cannot fetch tags: Missing token or gate ID');
-      throw VisitorValidationException('Missing authentication or gate information');
-    }
+  Future<int?> getAvailableVisitorTagId({String? gateId}) async {
+    try {
+      final token = await _getTokenFromPreferences();
+      final currentGateId = gateId ?? _gateId;
 
-    final uri = Uri.parse(
-      '${AppStrings.apiBaseUrl}/api/visitor-tags',
-    ).replace(
-      queryParameters: {
-        'unassigned': 'true',
-        'gate_id': currentGateId,
-      },
-    );
-    
-    debugPrint('📡 Fetching tags from: $uri');
-    
-    final response = await http.get(
-      uri,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      },
-    );
-    
-    debugPrint('📥 Available tags response: ${response.statusCode}');
-    debugPrint('📥 Response body: ${response.body}');
-    
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      
-      // Handle different response structures
-      List<dynamic> tagsList = [];
-      if (data['tags'] != null && data['tags'] is List) {
-        tagsList = data['tags'];
-        debugPrint('📋 Found tags in "tags" field: ${tagsList.length}');
-      } else if (data['data'] != null && data['data'] is List) {
-        tagsList = data['data'];
-        debugPrint('📋 Found tags in "data" field: ${tagsList.length}');
-      } else if (data is List) {
-        tagsList = data;
-        debugPrint('📋 Response is a list: ${tagsList.length}');
-      } else if (data['visitor_tags'] != null && data['visitor_tags'] is List) {
-        tagsList = data['visitor_tags'];
-        debugPrint('📋 Found tags in "visitor_tags" field: ${tagsList.length}');
+      debugPrint(
+        '🔍 Fetching available tag - Token: ${token != null ? "Present" : "NULL"}, GateId: $currentGateId',
+      );
+
+      if (token == null || currentGateId == null) {
+        debugPrint('⚠️ Cannot fetch tags: Missing token or gate ID');
+        throw VisitorValidationException(
+          'Missing authentication or gate information',
+        );
       }
-      
-      // Filter for unassigned tags
-      final unassignedTags = tagsList.where((tag) {
-        final isAssigned = tag['is_assigned'];
-        return isAssigned == false || 
-               isAssigned == 'false' || 
-               isAssigned == 0 ||
-               isAssigned == null;
-      }).toList();
-      
-      debugPrint('✅ Found ${unassignedTags.length} unassigned tags out of ${tagsList.length} total');
-      
-      if (unassignedTags.isNotEmpty) {
-        final tagId = unassignedTags.first['id'];
-        final tagNumber = unassignedTags.first['tag_number'] ?? 'Unknown';
-        debugPrint('🎫 Selected tag ID: $tagId, Number: $tagNumber');
-        return tagId is int ? tagId : int.tryParse(tagId.toString());
+
+      final uri = Uri.parse(
+        '${AppStrings.apiBaseUrl}/api/visitor-tags',
+      ).replace(
+        queryParameters: {'unassigned': 'true', 'gate_id': currentGateId},
+      );
+
+      debugPrint('📡 Fetching tags from: $uri');
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      debugPrint('📥 Available tags response: ${response.statusCode}');
+      debugPrint('📥 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        List<dynamic> tagsList = [];
+        if (data['tags'] != null && data['tags'] is List) {
+          tagsList = data['tags'];
+          debugPrint('📋 Found tags in "tags" field: ${tagsList.length}');
+        } else if (data['data'] != null && data['data'] is List) {
+          tagsList = data['data'];
+          debugPrint('📋 Found tags in "data" field: ${tagsList.length}');
+        } else if (data is List) {
+          tagsList = data;
+          debugPrint('📋 Response is a list: ${tagsList.length}');
+        } else if (data['visitor_tags'] != null &&
+            data['visitor_tags'] is List) {
+          tagsList = data['visitor_tags'];
+          debugPrint(
+            '📋 Found tags in "visitor_tags" field: ${tagsList.length}',
+          );
+        }
+
+        final unassignedTags =
+            tagsList.where((tag) {
+              final isAssigned = tag['is_assigned'];
+              return isAssigned == false ||
+                  isAssigned == 'false' ||
+                  isAssigned == 0 ||
+                  isAssigned == null;
+            }).toList();
+
+        debugPrint(
+          '✅ Found ${unassignedTags.length} unassigned tags out of ${tagsList.length} total',
+        );
+
+        if (unassignedTags.isNotEmpty) {
+          final tagId = unassignedTags.first['id'];
+          final tagNumber = unassignedTags.first['tag_number'] ?? 'Unknown';
+          debugPrint('🎫 Selected tag ID: $tagId, Number: $tagNumber');
+          return tagId is int ? tagId : int.tryParse(tagId.toString());
+        }
+
+        debugPrint(
+          '⚠️ No unassigned visitor tags available for gate $currentGateId',
+        );
+        throw VisitorValidationException(
+          'No unassigned visitor tags available',
+        );
+      } else if (response.statusCode == 401) {
+        debugPrint('🔐 Authentication failed when fetching tags');
+        throw VisitorAuthException('Session expired. Please login again.');
+      } else {
+        debugPrint('❌ Failed to fetch tags: ${response.statusCode}');
+        throw VisitorNetworkException(
+          'Failed to fetch available tags: ${response.statusCode}',
+        );
       }
-      
-      debugPrint('⚠️ No unassigned visitor tags available for gate $currentGateId');
-      throw VisitorValidationException('No unassigned visitor tags available');
-    } else if (response.statusCode == 401) {
-      debugPrint('🔐 Authentication failed when fetching tags');
-      throw VisitorAuthException('Session expired. Please login again.');
-    } else {
-      debugPrint('❌ Failed to fetch tags: ${response.statusCode}');
-      throw VisitorNetworkException('Failed to fetch available tags: ${response.statusCode}');
+    } catch (e) {
+      debugPrint('❌ Error fetching available tags: $e');
+      if (e is VisitorValidationException ||
+          e is VisitorAuthException ||
+          e is VisitorNetworkException) {
+        rethrow;
+      }
+      throw VisitorValidationException(
+        'Failed to fetch available tags: ${e.toString()}',
+      );
     }
-  } catch (e) {
-    debugPrint('❌ Error fetching available tags: $e');
-    if (e is VisitorValidationException || e is VisitorAuthException || e is VisitorNetworkException) {
-      rethrow;
-    }
-    throw VisitorValidationException('Failed to fetch available tags: ${e.toString()}');
   }
-}
-
-  
 
   /// Checks out a visitor
   Future<void> checkOutVisitor(Visitor visitor) async {
@@ -1790,6 +2059,8 @@ Future<int?> getAvailableVisitorTagId({String? gateId}) async {
     }
   }
 
+  // ── FIX 2: _saveCachedData never overwrites existing token/gate/user
+  //          credentials with '' when the in-memory value is null.
   /// Saves cached data to SharedPreferences
   Future<void> _saveCachedData() async {
     try {
@@ -1804,19 +2075,35 @@ Future<int?> getAvailableVisitorTagId({String? gateId}) async {
         'todays_total_count': _todaysTotalCount,
       });
 
-      await prefs.setString('token', _token ?? '');
-      await prefs.setString('gate_id', _gateId ?? '');
-      await prefs.setString('device_gate', _deviceGate ?? '');
-      await prefs.setString('userName', _userName ?? '');
-      await prefs.setString('userEmail', _userEmail ?? '');
-      await prefs.setString('userPhone', _userPhone ?? '');
-      await prefs.setString('userRole', _userRole ?? '');
-      await prefs.setString('userPosition', _userPosition ?? '');
-      if (_userAvatarUrl != null) {
-        await prefs.setString('userAvatarUrl', _userAvatarUrl!);
-      } else {
-        await prefs.remove('userAvatarUrl');
+      // Only overwrite credentials when we actually have them.
+      if (_token != null && _token!.isNotEmpty) {
+        await prefs.setString('token', _token!);
       }
+      if (_gateId != null && _gateId!.isNotEmpty) {
+        await prefs.setString('gate_id', _gateId!);
+      }
+      if (_deviceGate != null && _deviceGate!.isNotEmpty) {
+        await prefs.setString('device_gate', _deviceGate!);
+      }
+      if (_userName != null && _userName!.isNotEmpty) {
+        await prefs.setString('userName', _userName!);
+      }
+      if (_userEmail != null && _userEmail!.isNotEmpty) {
+        await prefs.setString('userEmail', _userEmail!);
+      }
+      if (_userPhone != null && _userPhone!.isNotEmpty) {
+        await prefs.setString('userPhone', _userPhone!);
+      }
+      if (_userRole != null && _userRole!.isNotEmpty) {
+        await prefs.setString('userRole', _userRole!);
+      }
+      if (_userPosition != null && _userPosition!.isNotEmpty) {
+        await prefs.setString('userPosition', _userPosition!);
+      }
+      if (_userAvatarUrl != null && _userAvatarUrl!.isNotEmpty) {
+        await prefs.setString('userAvatarUrl', _userAvatarUrl!);
+      }
+
       await prefs.setString('visitors', visitorsJson);
       await prefs.setString('destinations', destinationsJson);
       await prefs.setString('visitor_tags', tagsJson);
@@ -1966,6 +2253,7 @@ Future<int?> getAvailableVisitorTagId({String? gateId}) async {
   Future<http.Response> _retryApiCall(
     Future<http.Response> Function() apiCall, {
     int maxRetries = 3,
+    Duration requestTimeout = const Duration(seconds: 10),
   }) async {
     int attempt = 0;
     dynamic error;
@@ -1973,7 +2261,7 @@ Future<int?> getAvailableVisitorTagId({String? gateId}) async {
     while (attempt < maxRetries) {
       attempt++;
       try {
-        final response = await apiCall().timeout(Duration(seconds: 10));
+        final response = await apiCall().timeout(requestTimeout);
         if (response.statusCode >= 200 && response.statusCode < 300) {
           return response;
         } else {
@@ -1981,7 +2269,9 @@ Future<int?> getAvailableVisitorTagId({String? gateId}) async {
             'Request failed: Status ${response.statusCode}',
           );
           _handleApiError(response, 'API call failed');
-          if (attempt == maxRetries || response.statusCode == 401) {
+          if (attempt == maxRetries ||
+              response.statusCode == 401 ||
+              _isNonRetryableApiError(response)) {
             return response;
           }
         }
@@ -2044,6 +2334,21 @@ Future<int?> getAvailableVisitorTagId({String? gateId}) async {
     debugPrint(
       '❌ API Error: $context - Status: ${response.statusCode}, Body: ${response.body}',
     );
+  }
+
+  bool _isNonRetryableApiError(http.Response response) {
+    if (response.statusCode == 400 ||
+        response.statusCode == 404 ||
+        response.statusCode == 405 ||
+        response.statusCode == 422) {
+      return true;
+    }
+
+    final body = response.body.toLowerCase();
+    if (body.contains('sqlstate') && body.contains('unknown column')) {
+      return true;
+    }
+    return false;
   }
 
   /// Updates user profile information

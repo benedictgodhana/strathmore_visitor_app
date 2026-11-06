@@ -143,7 +143,11 @@ class DatabaseService {
       if (map['host'] is Map) map['host'] = jsonEncode(map['host']);
       if (map['office'] is Map) map['office'] = jsonEncode(map['office']);
 
-      await db.insert('visitors', map, conflictAlgorithm: ConflictAlgorithm.replace);
+      await db.insert(
+        'visitors',
+        map,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     } catch (e) {
       print('❌ Error inserting visitor: $e');
       rethrow;
@@ -171,7 +175,10 @@ class DatabaseService {
     }
   }
 
-  Future<List<Visitor>> getVisitors({required int page, required int limit}) async {
+  Future<List<Visitor>> getVisitors({
+    required int page,
+    required int limit,
+  }) async {
     final db = await database;
     final offset = (page - 1) * limit;
     final maps = await db.query('visitors', limit: limit, offset: offset);
@@ -238,7 +245,11 @@ class DatabaseService {
     final db = await database;
     final batch = db.batch();
     for (var dest in destinations) {
-      batch.insert('destinations', dest, conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+        'destinations',
+        dest,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
     await batch.commit();
   }
@@ -253,7 +264,11 @@ class DatabaseService {
     final db = await database;
     final batch = db.batch();
     for (var tag in tags) {
-      batch.insert('visitor_tags', tag, conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+        'visitor_tags',
+        tag,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
     await batch.commit();
   }
@@ -289,14 +304,20 @@ class DatabaseService {
     final db = await database;
     final batch = db.batch();
     for (var record in visitRecords) {
-      batch.insert('visit_records', record.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+        'visit_records',
+        record.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
     await batch.commit();
   }
 
   Future<int> getTotalVisitCount() async {
     final db = await database;
-    final result = await db.rawQuery('SELECT COUNT(*) as count FROM visit_records');
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM visit_records',
+    );
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
@@ -335,16 +356,12 @@ class DatabaseService {
     if (map['host'] is Map) map['host'] = jsonEncode(map['host']);
     if (map['office'] is Map) map['office'] = jsonEncode(map['office']);
 
-    await db.insert(
-      'queued_actions',
-      {
-        'visitor_id': visitor.id,
-        'type': type,
-        'data': jsonEncode(map),
-        'created_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('queued_actions', {
+      'visitor_id': visitor.id,
+      'type': type,
+      'data': jsonEncode(map),
+      'created_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<QueuedAction>> getQueuedActions() async {
@@ -377,17 +394,16 @@ class DatabaseService {
     return jsonDecode(maps.first['data'] as String);
   }
 
-  Future<void> cacheVerification(String identifier, Map<String, dynamic> data) async {
+  Future<void> cacheVerification(
+    String identifier,
+    Map<String, dynamic> data,
+  ) async {
     final db = await database;
-    await db.insert(
-      'cached_verifications',
-      {
-        'identifier': identifier,
-        'data': jsonEncode(data),
-        'created_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('cached_verifications', {
+      'identifier': identifier,
+      'data': jsonEncode(data),
+      'created_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 }
 

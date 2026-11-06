@@ -12,7 +12,8 @@ class Host {
     required this.email,
     required this.department,
     required this.phone,
-    required this.createdAt, String? position,
+    required this.createdAt,
+    String? position,
   });
 
   Map<String, dynamic> toMap() {

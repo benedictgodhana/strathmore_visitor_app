@@ -1,13 +1,21 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:confetti/confetti.dart';
 import '../utils/constants.dart';
-import '../components/custom_app_bar.dart';
-import '../components/custom_bottom_nav.dart';
 import '../providers/visitor_provider.dart';
+
+const Color kPrimary = Color(0xFF0B3D91);
+const Color kPrimaryLight = Color(0xFF1E5AA8);
+const Color kPrimaryDark = Color(0xFF061E45);
+const Color kGold = Color(0xFFB8860B);
+const Color kGoldLight = Color(0xFFD4A72C);
+const Color kSuccess = Color(0xFF047857);
+const Color kDanger = Color(0xFFB91C1C);
+const Color kSignalGreen = Color(0xFF34D399);
 
 class IdentityVerificationScreen extends StatefulWidget {
   @override
@@ -15,63 +23,56 @@ class IdentityVerificationScreen extends StatefulWidget {
       _IdentityVerificationScreenState();
 }
 
-class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
-    with TickerProviderStateMixin {
+class _IdentityVerificationScreenState extends State<IdentityVerificationScreen> {
   final _formKey = GlobalKey<FormState>();
   final _studentIdController = TextEditingController();
   final _usernameController = TextEditingController();
   final _staffNoController = TextEditingController();
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  
   String _verificationType = 'student';
   String? _errorMessage;
   String? _successMessage;
   bool _isLoading = false;
   Map<String, dynamic>? _identityData;
   List<Map<String, dynamic>> _recentVerifications = [];
-  late AnimationController _animationController;
-  late AnimationController _slideController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
   late ConfettiController _confettiController;
-  int _currentIndex = 3; // Set to index for verification screen
   bool isDarkMode = false;
+  String? deviceGate;
+
+  // ── Theme tokens ─────────────────────────────────────────────────────────
+  Color get _bg => isDarkMode ? const Color(0xFF060B1A) : Colors.white;
+  Color get _surface => isDarkMode ? const Color(0xFF0D1730) : Colors.white;
+  Color get _tile => isDarkMode ? const Color(0xFF14213F) : const Color(0xFFE8EEFB);
+  Color get _stroke => isDarkMode ? Colors.white.withOpacity(0.08) : kPrimary.withOpacity(0.10);
+  Color get _text => isDarkMode ? const Color(0xFFF1F5FF) : kPrimaryDark;
+  Color get _muted => isDarkMode ? const Color(0xFF8FA0C4) : const Color(0xFF5B6B85);
+  Color get _accent => isDarkMode ? kGoldLight : kPrimary;
+  Color get _ok => isDarkMode ? kSignalGreen : kSuccess;
 
   @override
   void initState() {
     super.initState();
-    _initializeAnimations();
+    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
     _loadSavedData();
-    _confettiController = ConfettiController(
-      duration: const Duration(seconds: 1),
-    );
   }
 
-  void _initializeAnimations() {
-    _animationController = AnimationController(
-      duration: Duration(milliseconds: 1200),
-      vsync: this,
-    );
-    _slideController = AnimationController(
-      duration: Duration(milliseconds: 1000),
-      vsync: this,
-    );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOutQuart),
-    );
-    _slideAnimation = Tween<Offset>(
-      begin: Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(parent: _slideController, curve: Curves.fastOutSlowIn),
-    );
-    _animationController.forward();
-    _slideController.forward();
+  @override
+  void dispose() {
+    _studentIdController.dispose();
+    _usernameController.dispose();
+    _staffNoController.dispose();
+    _confettiController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSavedData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
       setState(() {
         isDarkMode = prefs.getBool('isDarkMode') ?? false;
+        deviceGate = prefs.getString('device_gate') ?? 'Main Gate';
         _verificationType = prefs.getString('verification_type') ?? 'student';
         _studentIdController.text = prefs.getString('last_student_id') ?? '';
         _usernameController.text = prefs.getString('last_username') ?? '';
@@ -79,20 +80,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
       });
       await _loadRecentVerifications();
     } catch (e) {
-      print('Error loading saved data: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Failed to load saved data: $e',
-            style: TextStyle(fontFamily: 'BrandonGrotesque', color: Colors.white),
-          ),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
+      _showError('Failed to load saved data: $e');
     }
   }
 
@@ -100,35 +88,27 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('verification_type', _verificationType);
-      if (_verificationType == 'student' &&
-          _studentIdController.text.isNotEmpty) {
+      if (_verificationType == 'student' && _studentIdController.text.isNotEmpty) {
         await prefs.setString('last_student_id', _studentIdController.text);
       }
-      if (_verificationType == 'username' &&
-          _usernameController.text.isNotEmpty) {
+      if (_verificationType == 'username' && _usernameController.text.isNotEmpty) {
         await prefs.setString('last_username', _usernameController.text);
       }
-      if (_verificationType == 'staffNo' &&
-          _staffNoController.text.isNotEmpty) {
+      if (_verificationType == 'staffNo' && _staffNoController.text.isNotEmpty) {
         await prefs.setString('last_staff_no', _staffNoController.text);
       }
     } catch (e) {
-      print('Error saving data: $e');
+      debugPrint('Error saving data: $e');
     }
   }
 
-  Future<void> _saveVerificationHistory(
-    Map<String, dynamic> verificationData,
-  ) async {
+  Future<void> _saveVerificationHistory(Map<String, dynamic> verificationData) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final historyList = prefs.getStringList('verification_history') ?? [];
       final newEntry = {
         'type': verificationData['type'],
-        'id':
-            verificationData['type'] == 'student'
-                ? verificationData['studentId']
-                : verificationData['staffNo'],
+        'id': verificationData['type'] == 'student' ? verificationData['studentId'] : verificationData['staffNo'],
         'name': verificationData['name'],
         'timestamp': DateTime.now().toIso8601String(),
       };
@@ -139,7 +119,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
       await prefs.setStringList('verification_history', historyList);
       await _loadRecentVerifications();
     } catch (e) {
-      print('Error saving verification history: $e');
+      debugPrint('Error saving verification history: $e');
     }
   }
 
@@ -147,19 +127,18 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     try {
       final prefs = await SharedPreferences.getInstance();
       final historyList = prefs.getStringList('verification_history') ?? [];
+      if (!mounted) return;
       setState(() {
-        _recentVerifications =
-            historyList.map((entry) {
-              final decoded = jsonDecode(entry);
-              return <String, dynamic>{
-                'display':
-                    '${decoded['type'].toString().capitalize()} ID: ${decoded['id']} (${decoded['name']})',
-                'timestamp': decoded['timestamp'],
-              };
-            }).toList();
+        _recentVerifications = historyList.map((entry) {
+          final decoded = jsonDecode(entry);
+          return <String, dynamic>{
+            'display': '${decoded['type'].toString().capitalize()} ID: ${decoded['id']} (${decoded['name']})',
+            'timestamp': decoded['timestamp'],
+          };
+        }).toList();
       });
     } catch (e) {
-      print('Error loading recent verifications: $e');
+      debugPrint('Error loading recent verifications: $e');
     }
   }
 
@@ -171,40 +150,16 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
       await prefs.remove('last_username');
       await prefs.remove('last_staff_no');
       await prefs.remove('verification_history');
+      if (!mounted) return;
       setState(() {
         _recentVerifications.clear();
         _clearForm();
       });
       HapticFeedback.mediumImpact();
       _confettiController.play();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'All saved data cleared',
-            style: TextStyle(fontFamily: 'BrandonGrotesque', color: Colors.white),
-          ),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
+      _showSuccess('All saved data cleared');
     } catch (e) {
-      print('Error clearing saved data: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Failed to clear data: $e',
-            style: TextStyle(fontFamily: 'BrandonGrotesque', color: Colors.white),
-          ),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
+      _showError('Failed to clear data: $e');
     }
   }
 
@@ -219,23 +174,14 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
 
       try {
         await _saveData();
-        final visitorProvider = Provider.of<VisitorProvider>(
-          context,
-          listen: false,
-        );
+        final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
         Map<String, dynamic> result;
         if (_verificationType == 'student') {
-          result = await visitorProvider.verifyIdentity(
-            studentId: _studentIdController.text,
-          );
+          result = await visitorProvider.verifyIdentity(studentId: _studentIdController.text);
         } else if (_verificationType == 'username') {
-          result = await visitorProvider.verifyIdentity(
-            username: _usernameController.text,
-          );
+          result = await visitorProvider.verifyIdentity(username: _usernameController.text);
         } else {
-          result = await visitorProvider.verifyIdentity(
-            staffNo: _staffNoController.text,
-          );
+          result = await visitorProvider.verifyIdentity(staffNo: _staffNoController.text);
         }
 
         if (result['success']) {
@@ -264,32 +210,28 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             },
           };
 
+          if (!mounted) return;
           setState(() {
             _identityData = identityData;
-            _successMessage =
-                result['message'] ??
-                '${result['type'].toString().capitalize()} verified successfully';
+            _successMessage = result['message'] ?? '${result['type'].toString().capitalize()} verified successfully';
           });
 
           HapticFeedback.mediumImpact();
           _confettiController.play();
           await _saveVerificationHistory(identityData);
         } else {
+          if (!mounted) return;
           setState(() {
-            _errorMessage =
-                result['message'] ??
-                'Failed to verify ${_verificationType == 'student' ? 'student' : 'staff'}';
+            _errorMessage = result['message'] ?? 'Failed to verify ${_verificationType == 'student' ? 'student' : 'staff'}';
           });
         }
       } catch (e) {
+        if (!mounted) return;
         setState(() {
-          _errorMessage =
-              'Error verifying ${_verificationType == 'student' ? 'student ID' : 'staff'}: $e';
+          _errorMessage = 'Error verifying ${_verificationType == 'student' ? 'student ID' : 'staff'}: $e';
         });
       } finally {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }
@@ -306,209 +248,100 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     HapticFeedback.selectionClick();
   }
 
+  void _showError(String msg) {
+    if (!mounted) return;
+    setState(() => _errorMessage = msg);
+  }
+
+  void _showSuccess(String msg) {
+    if (!mounted) return;
+    setState(() => _successMessage = msg);
+  }
+
   void _toggleDarkMode() async {
-    setState(() {
-      isDarkMode = !isDarkMode;
-    });
+    setState(() => isDarkMode = !isDarkMode);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isDarkMode', isDarkMode);
   }
 
-  void _onBottomNavTap(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
+  void _go(String route) {
+    HapticFeedback.selectionClick();
+    Navigator.pushNamed(context, route);
+  }
 
-    switch (index) {
-      case 0:
-        Navigator.pushNamed(context, '/home');
-        break;
-      case 1:
-        Navigator.pushNamed(context, '/visitor-registration');
-        break;
-      case 2:
-        Navigator.pushNamed(context, '/check-out');
-        break;
-      case 3:
-        break; // Already on this screen
-      case 4:
-        Navigator.pushNamed(context, '/settings');
-        break;
+  void _goHome() {
+    HapticFeedback.selectionClick();
+    Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+  }
+
+  Future<void> _logout() async {
+    final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
+    await visitorProvider.logout();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token');
+    await prefs.remove('gate_id');
+    if (mounted) {
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
     }
   }
 
   @override
-  void dispose() {
-    _studentIdController.dispose();
-    _usernameController.dispose();
-    _staffNoController.dispose();
-    _animationController.dispose();
-    _slideController.dispose();
-    _confettiController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
-
-    return Scaffold(
-      backgroundColor: isDarkMode ? Color(0xFF0A0E21) : Color(0xFFF8FAFF),
-      extendBodyBehindAppBar: true,
-      appBar: CustomAppBar(
-        title: 'Identity Verification',
-        color: Colors.white,
-        backgroundColor: Colors.transparent,
-        showBackButton: true,
-        showNotifications: true,
-        showAccount: true,
-        showLogout: true,
-        notificationCount:
-            Provider.of<VisitorProvider>(context).visitors.length,
-        onLogoutTap: () async {
-          final visitorProvider = Provider.of<VisitorProvider>(
-            context,
-            listen: false,
-          );
-          await visitorProvider.logout();
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            '/login',
-            (route) => false,
-          );
-        },
-        actions: [
-          IconButton(
-            icon: Icon(
-              isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-              color: Colors.white,
-            ),
-            onPressed: _toggleDarkMode,
-          ),
-        ],
-        onBack: () => Navigator.pop(context),
-        isDarkMode: isDarkMode,
+    return Theme(
+      data: ThemeData(
+        brightness: isDarkMode ? Brightness.dark : Brightness.light,
+        scaffoldBackgroundColor: _bg,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: kPrimary,
+          brightness: isDarkMode ? Brightness.dark : Brightness.light,
+        ),
       ),
-      body: Stack(
-        children: [
-          AnimatedContainer(
-            duration: Duration(milliseconds: 500),
-            height: 200,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.primaryBlue, AppColors.secondaryBlue],
-              ),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(30),
-                bottomRight: Radius.circular(30),
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.topCenter,
-            child: ConfettiWidget(
-              confettiController: _confettiController,
-              blastDirectionality: BlastDirectionality.explosive,
-              shouldLoop: false,
-              colors: const [
-                Colors.white,
-                AppColors.primaryBlue,
-                Colors.amber,
-                Colors.green,
-              ],
-            ),
-          ),
-          SafeArea(
-            child: CustomScrollView(
-              physics: BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              slivers: [
-                SliverToBoxAdapter(child: SizedBox(height: 20)),
-                SliverPadding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isSmallScreen ? 16 : 24,
-                  ),
-                  sliver: SliverToBoxAdapter(
-                    child: FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: SlideTransition(
-                        position: _slideAnimation,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Verify Identity',
-                              style: TextStyle(
-                                fontSize: isSmallScreen ? 24 : 28,
-                                fontWeight: FontWeight.w700,
-                                fontFamily: 'BrandonGrotesque',
-                                color:
-                                    isDarkMode
-                                        ? Colors.white
-                                        : Color(0xFF0F172A),
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Select the verification type and enter the appropriate details.',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontFamily: 'BrandonGrotesque',
-                                color:
-                                    isDarkMode
-                                        ? Color(0xFF94A3B8)
-                                        : Color(0xFF64748B),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                SliverPadding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isSmallScreen ? 16 : 24,
-                    vertical: 16,
-                  ),
-                  sliver: SliverToBoxAdapter(
-                    child: FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: SlideTransition(
-                        position: _slideAnimation,
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: isDarkMode ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+        child: Scaffold(
+          key: _scaffoldKey,
+          backgroundColor: _bg,
+          drawer: _buildDrawer(),
+          body: Stack(
+            children: [
+              SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
+                    _buildTopBar(),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 48),
                         child: Form(
                           key: _formKey,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildVerificationTypeSelector(isSmallScreen),
-                              SizedBox(height: 24),
-                              _buildInputForm(isSmallScreen),
+                              _buildPageHeader(),
+                              const SizedBox(height: 16),
+                              _buildVerificationTypeSelector(),
+                              const SizedBox(height: 16),
+                              _buildInputForm(),
                               if (_errorMessage != null) ...[
-                                SizedBox(height: 16),
-                                _buildErrorMessage(isSmallScreen),
+                                const SizedBox(height: 16),
+                                _buildMessageCard(_errorMessage!, kDanger, Icons.error_outline_rounded),
                               ],
                               if (_successMessage != null) ...[
-                                SizedBox(height: 16),
-                                _buildSuccessMessage(isSmallScreen),
+                                const SizedBox(height: 16),
+                                _buildMessageCard(_successMessage!, _ok, Icons.check_circle_outline_rounded),
                               ],
-                              _buildInfoCard(isSmallScreen),
-                              _buildRecentVerifications(isSmallScreen),
-                              SizedBox(height: 24),
+                              if (_identityData != null) ...[
+                                const SizedBox(height: 20),
+                                _buildInfoCard(),
+                              ],
+                              const SizedBox(height: 20),
+                              _buildRecentVerifications(),
+                              const SizedBox(height: 32),
                               Center(
                                 child: Text(
                                   'For security use only • ${AppStrings.universityName}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontFamily: 'BrandonGrotesque',
-                                    color:
-                                        isDarkMode
-                                            ? Color(0xFF94A3B8)
-                                            : Color(0xFF64748B),
-                                  ),
+                                  style: GoogleFonts.afacad(fontSize: 15, color: _muted),
                                   textAlign: TextAlign.center,
                                 ),
                               ),
@@ -517,38 +350,150 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                SliverToBoxAdapter(child: SizedBox(height: 100)),
-              ],
-            ),
+              ),
+              Align(
+                alignment: Alignment.topCenter,
+                child: ConfettiWidget(
+                  confettiController: _confettiController,
+                  blastDirectionality: BlastDirectionality.explosive,
+                  shouldLoop: false,
+                  colors: const [Colors.white, kPrimary, kPrimaryLight, kGold, kGoldLight],
+                  numberOfParticles: 50,
+                  gravity: 0.2,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-      bottomNavigationBar: CustomBottomNav(
-        currentIndex: _currentIndex,
-        onTap: _onBottomNavTap,
-        onNext: () {},
-        onBack: () {},
-        step: 0,
-        isLoading: false,
-        isDarkMode: isDarkMode,
-        children: const <Widget>[],
+        ),
       ),
     );
   }
 
-  Widget _buildVerificationTypeSelector(bool isSmallScreen) {
+  Widget _buildDrawer() {
+    Widget item(IconData i, String label, VoidCallback onTap) => ListTile(
+      leading: Icon(i, color: Colors.white.withOpacity(0.9), size: 28),
+      title: Text(
+        label,
+        style: GoogleFonts.afacad(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w600),
+      ),
+      onTap: () {
+        Navigator.pop(context);
+        onTap();
+      },
+    );
+
+    return Drawer(
+      backgroundColor: kPrimaryDark,
+      shape: const RoundedRectangleBorder(),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppStrings.universityName,
+                    style: GoogleFonts.afacad(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'ACCESS CONTROL',
+                    style: GoogleFonts.afacad(color: kGoldLight, fontSize: 14, letterSpacing: 2, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+            item(Icons.grid_view_rounded, 'Dashboard', _goHome),
+            item(Icons.people_alt_outlined, 'All Visitors', () => _go('/visitor-list')),
+            item(Icons.search_rounded, 'Search Records', () => _go('/visitor-search')),
+            item(Icons.exit_to_app_rounded, 'Check Out', () => _go('/check-out')),
+            item(Icons.settings_outlined, 'Settings', () => _go('/settings')),
+            const Spacer(),
+            SwitchListTile(
+              value: isDarkMode,
+              onChanged: (_) => _toggleDarkMode(),
+              activeColor: kGoldLight,
+              secondary: const Icon(Icons.dark_mode_rounded, color: Colors.white70, size: 28),
+              title: Text(
+                'Dark mode',
+                style: GoogleFonts.afacad(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w600),
+              ),
+            ),
+            item(Icons.logout_rounded, 'Log out', _logout),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            tooltip: 'Open menu',
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            icon: Icon(Icons.grid_view_rounded, color: _text, size: 32),
+          ),
+          Text(
+            'Verify ID',
+            style: GoogleFonts.afacad(fontSize: 26, fontWeight: FontWeight.w800, color: _text),
+          ),
+          IconButton(
+            tooltip: isDarkMode ? 'Light mode' : 'Dark mode',
+            onPressed: _toggleDarkMode,
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: Icon(
+                isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                key: ValueKey(isDarkMode),
+                color: _text,
+                size: 32,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Verify Identity',
+          style: GoogleFonts.afacad(fontSize: 36, height: 1.1, fontWeight: FontWeight.w800, color: _text),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Select the verification type and enter the appropriate details.',
+          style: GoogleFonts.afacad(fontSize: 18, color: _muted),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVerificationTypeSelector() {
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDarkMode ? Color(0xFF1E293B) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: _surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _stroke, width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.1),
+            color: isDarkMode ? Colors.black26 : kPrimaryDark.withOpacity(0.04),
             blurRadius: 20,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -556,49 +501,21 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
         value: _verificationType,
         decoration: InputDecoration(
           labelText: 'Verification Type',
-          labelStyle: TextStyle(
-            fontFamily: 'BrandonGrotesque',
-            color: AppColors.primaryBlue,
-            fontWeight: FontWeight.w600,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
+          labelStyle: GoogleFonts.afacad(fontSize: 18, color: _muted, fontWeight: FontWeight.w600),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: _accent, width: 2)),
           filled: true,
-          fillColor: isDarkMode ? Color(0xFF334155) : Colors.grey[100],
+          fillColor: _tile.withOpacity(isDarkMode ? 0.7 : 0.55),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
         ),
+        dropdownColor: _surface,
+        borderRadius: BorderRadius.circular(20),
+        style: GoogleFonts.afacad(fontSize: 19, fontWeight: FontWeight.w600, color: _text),
         items: [
-          DropdownMenuItem(
-            value: 'student',
-            child: Text(
-              'Student ID',
-              style: TextStyle(
-                fontFamily: 'BrandonGrotesque',
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          DropdownMenuItem(
-            value: 'username',
-            child: Text(
-              'Staff Username',
-              style: TextStyle(
-                fontFamily: 'BrandonGrotesque',
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          DropdownMenuItem(
-            value: 'staffNo',
-            child: Text(
-              'Staff Number',
-              style: TextStyle(
-                fontFamily: 'BrandonGrotesque',
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
+          DropdownMenuItem(value: 'student', child: Text('Student ID', style: GoogleFonts.afacad(fontSize: 19, color: _text))),
+          DropdownMenuItem(value: 'username', child: Text('Staff Username', style: GoogleFonts.afacad(fontSize: 19, color: _text))),
+          DropdownMenuItem(value: 'staffNo', child: Text('Staff Number', style: GoogleFonts.afacad(fontSize: 19, color: _text))),
         ],
         onChanged: (value) {
           setState(() {
@@ -612,17 +529,18 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     );
   }
 
-  Widget _buildInputForm(bool isSmallScreen) {
+  Widget _buildInputForm() {
     return Container(
-      padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDarkMode ? Color(0xFF1E293B) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: _surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _stroke, width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.1),
+            color: isDarkMode ? Colors.black26 : kPrimaryDark.withOpacity(0.04),
             blurRadius: 20,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -633,144 +551,103 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             _verificationType == 'student'
                 ? 'Student ID Number'
                 : _verificationType == 'username'
-                ? 'Staff Username'
-                : 'Staff Number',
-            style: TextStyle(
-              fontSize: isSmallScreen ? 16 : 18,
-              fontWeight: FontWeight.w700,
-              fontFamily: 'BrandonGrotesque',
-              color: isDarkMode ? Colors.white : Color(0xFF0F172A),
-            ),
+                    ? 'Staff Username'
+                    : 'Staff Number',
+            style: GoogleFonts.afacad(fontSize: 20, fontWeight: FontWeight.w800, color: _text),
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 16),
           TextFormField(
-            controller:
-                _verificationType == 'student'
-                    ? _studentIdController
-                    : _verificationType == 'username'
+            controller: _verificationType == 'student'
+                ? _studentIdController
+                : _verificationType == 'username'
                     ? _usernameController
                     : _staffNoController,
-            keyboardType:
-                _verificationType == 'student'
-                    ? TextInputType.number
-                    : TextInputType.text,
+            keyboardType: _verificationType == 'student' ? TextInputType.number : TextInputType.text,
+            style: GoogleFonts.afacad(fontSize: 20, color: _text),
             decoration: InputDecoration(
-              hintText:
-                  _verificationType == 'student'
-                      ? 'Enter 6 or 7-digit ID (e.g., 123456)'
-                      : _verificationType == 'username'
+              hintText: _verificationType == 'student'
+                  ? 'Enter 6 or 7-digit ID (e.g., 123456)'
+                  : _verificationType == 'username'
                       ? 'Enter staff username'
                       : 'Enter staff number',
-              hintStyle: TextStyle(fontFamily: 'BrandonGrotesque'),
+              hintStyle: GoogleFonts.afacad(color: _muted, fontSize: 18),
               prefixIcon: Icon(
-                _verificationType == 'student' ? Icons.badge : Icons.person,
-                color: AppColors.primaryBlue,
+                _verificationType == 'student' ? Icons.badge_rounded : Icons.person_rounded,
+                color: _accent,
+                size: 28,
               ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppColors.primaryBlue, width: 2),
-              ),
-              errorBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppColors.error, width: 2),
-              ),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: _accent, width: 2)),
+              errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: kDanger, width: 1.5)),
               filled: true,
-              fillColor: isDarkMode ? Color(0xFF334155) : Colors.grey[100],
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 16,
-              ),
-            ),
-            style: TextStyle(
-              fontFamily: 'BrandonGrotesque',
-              fontSize: 16,
+              fillColor: _tile.withOpacity(isDarkMode ? 0.7 : 0.55),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return 'Please enter ${_verificationType == 'student'
                     ? 'a student ID'
                     : _verificationType == 'username'
-                    ? 'a username'
-                    : 'a staff number'}';
+                        ? 'a username'
+                        : 'a staff number'}';
               }
-              if (_verificationType == 'student' &&
-                  !RegExp(r'^\d{6,7}$').hasMatch(value)) {
+              if (_verificationType == 'student' && !RegExp(r'^\d{6,7}$').hasMatch(value)) {
                 return 'Student ID must be 6 or 7 digits';
               }
               return null;
             },
             onChanged: (value) => _saveData(),
           ),
-          SizedBox(height: 20),
+          const SizedBox(height: 24),
           Row(
             children: [
               Expanded(
-                child: ElevatedButton(
-                  onPressed:
-                      _isLoading
+                child: Container(
+                  height: 62,
+                  decoration: BoxDecoration(
+                    color: _accent,
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(30),
+                      onTap: _isLoading
                           ? null
                           : () {
-                            HapticFeedback.mediumImpact();
-                            _verifyIdentity();
-                          },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 2,
-                  ),
-                  child:
-                      _isLoading
-                          ? SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
+                              HapticFeedback.mediumImpact();
+                              _verifyIdentity();
+                            },
+                      child: Center(
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 24,
+                                width: 24,
+                                child: CircularProgressIndicator(strokeWidth: 2.5, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+                              )
+                            : Text(
+                                'Verify ${_verificationType.capitalize()}',
+                                style: GoogleFonts.afacad(color: isDarkMode ? kPrimaryDark : Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
                               ),
-                            ),
-                          )
-                          : Text(
-                            'Verify ${_verificationType.capitalize()}',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              fontFamily: 'BrandonGrotesque',
-                            ),
-                          ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
               if (_identityData != null) ...[
-                SizedBox(width: 12),
-                ElevatedButton(
+                const SizedBox(width: 16),
+                OutlinedButton(
                   onPressed: _clearForm,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey[600],
-                    padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _text,
+                    padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                    side: BorderSide(color: _stroke, width: 1.5),
+                    shape: const StadiumBorder(),
                   ),
                   child: Text(
                     'Clear',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'BrandonGrotesque',
-                    ),
+                    style: GoogleFonts.afacad(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                 ),
               ],
@@ -781,31 +658,22 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     );
   }
 
-  Widget _buildErrorMessage(bool isSmallScreen) {
+  Widget _buildMessageCard(String message, Color color, IconData icon) {
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
-        color: AppColors.error.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.error.withOpacity(0.3)),
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withOpacity(0.30), width: 1.5),
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.error_outline,
-            color: AppColors.error,
-            size: isSmallScreen ? 20 : 24,
-          ),
-          SizedBox(width: 12),
+          Icon(icon, color: color, size: 26),
+          const SizedBox(width: 14),
           Expanded(
             child: Text(
-              _errorMessage!,
-              style: TextStyle(
-                fontFamily: 'BrandonGrotesque',
-                color: AppColors.error,
-                fontSize: isSmallScreen ? 13 : 14,
-                fontWeight: FontWeight.w500,
-              ),
+              message,
+              style: GoogleFonts.afacad(color: color, fontSize: 17, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -813,56 +681,21 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     );
   }
 
-  Widget _buildSuccessMessage(bool isSmallScreen) {
+  Widget _buildInfoCard() {
     return Container(
-      padding: EdgeInsets.all(16),
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.green.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.check_circle,
-            color: Colors.green,
-            size: isSmallScreen ? 20 : 24,
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _successMessage!,
-              style: TextStyle(
-                fontFamily: 'BrandonGrotesque',
-                color: Colors.green,
-                fontSize: isSmallScreen ? 13 : 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoCard(bool isSmallScreen) {
-    if (_identityData == null) return SizedBox.shrink();
-
-    return Container(
-      margin: EdgeInsets.only(top: 20),
-      padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
-      decoration: BoxDecoration(
-        color: isDarkMode ? Color(0xFF1E293B) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: _surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _stroke, width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.1),
+            color: isDarkMode ? Colors.black26 : kPrimaryDark.withOpacity(0.04),
             blurRadius: 20,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
-        border:
-            isDarkMode ? Border.all(color: Color(0xFF334155), width: 1) : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -870,93 +703,57 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
           Row(
             children: [
               Container(
-                padding: EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.2),
+                  color: _ok.withOpacity(0.12),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  Icons.check_circle,
-                  color: Colors.green,
-                  size: isSmallScreen ? 20 : 24,
-                ),
+                child: Icon(Icons.check_circle_rounded, color: _ok, size: 28),
               ),
-              SizedBox(width: 12),
+              const SizedBox(width: 14),
               Text(
                 '${_identityData!['type'].toString().capitalize()} Verified',
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 18 : 20,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'BrandonGrotesque',
-                  color: isDarkMode ? Colors.white : Color(0xFF0F172A),
-                ),
+                style: GoogleFonts.afacad(fontSize: 24, fontWeight: FontWeight.w800, color: _text),
               ),
             ],
           ),
-          SizedBox(height: 16),
-          _buildInfoRow('Name:', _identityData!['name'], isSmallScreen),
+          const SizedBox(height: 24),
+          _buildInfoRow('Name', _identityData!['name']),
           if (_identityData!['type'] == 'student') ...[
-            _buildInfoRow(
-              'Student ID:',
-              _identityData!['studentId'],
-              isSmallScreen,
-            ),
-            _buildInfoRow('Courses:', _identityData!['courses'], isSmallScreen),
-            _buildInfoRow(
-              'Faculties:',
-              _identityData!['faculties'],
-              isSmallScreen,
-            ),
-            _buildInfoRow('Status:', _identityData!['status'], isSmallScreen),
-            _buildInfoRow(
-              'ID Expiry:',
-              _identityData!['idExpiry'],
-              isSmallScreen,
-            ),
+            _buildInfoRow('Student ID', _identityData!['studentId']),
+            _buildInfoRow('Courses', _identityData!['courses']),
+            _buildInfoRow('Faculties', _identityData!['faculties']),
+            _buildInfoRow('Status', _identityData!['status']),
+            _buildInfoRow('ID Expiry', _identityData!['idExpiry']),
           ] else ...[
-            _buildInfoRow(
-              'Username:',
-              _identityData!['username'],
-              isSmallScreen,
-            ),
-            _buildInfoRow(
-              'Staff Number:',
-              _identityData!['staffNo'],
-              isSmallScreen,
-            ),
-            _buildInfoRow(
-              'Department:',
-              _identityData!['department'],
-              isSmallScreen,
-            ),
-            _buildInfoRow('Status:', _identityData!['status'], isSmallScreen),
+            _buildInfoRow('Username', _identityData!['username']),
+            _buildInfoRow('Staff Number', _identityData!['staffNo']),
+            _buildInfoRow('Department', _identityData!['department']),
+            _buildInfoRow('Status', _identityData!['status']),
           ],
-          SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () {
-              HapticFeedback.mediumImpact();
-              Navigator.pop(
-                context,
-                _identityData!['type'] == 'student'
-                    ? _identityData!['studentId']
-                    : _identityData!['staffNo'],
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryBlue,
-              padding: EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          const SizedBox(height: 28),
+          SizedBox(
+            width: double.infinity,
+            height: 62,
+            child: ElevatedButton(
+              onPressed: () {
+                HapticFeedback.mediumImpact();
+                Navigator.pop(
+                  context,
+                  _identityData!['type'] == 'student'
+                      ? _identityData!['studentId']
+                      : _identityData!['staffNo'],
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _accent,
+                foregroundColor: isDarkMode ? kPrimaryDark : Colors.white,
+                shape: const StadiumBorder(),
+                elevation: 0,
               ),
-              elevation: 2,
-            ),
-            child: Text(
-              'Done',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'BrandonGrotesque',
+              child: Text(
+                'Done',
+                style: GoogleFonts.afacad(fontSize: 20, fontWeight: FontWeight.w800),
               ),
             ),
           ),
@@ -965,32 +762,23 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     );
   }
 
-  Widget _buildInfoRow(String label, String value, bool isSmallScreen) {
+  Widget _buildInfoRow(String label, String value) {
     return Padding(
-      padding: EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: isSmallScreen ? 100 : 120,
+            width: 130,
             child: Text(
               label,
-              style: TextStyle(
-                fontSize: isSmallScreen ? 13 : 14,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'BrandonGrotesque',
-                color: isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
-              ),
+              style: GoogleFonts.afacad(fontSize: 16, fontWeight: FontWeight.w600, color: _muted),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(
-                fontSize: isSmallScreen ? 13 : 14,
-                fontFamily: 'BrandonGrotesque',
-                color: isDarkMode ? Colors.white : Color(0xFF0F172A),
-              ),
+              style: GoogleFonts.afacad(fontSize: 17, fontWeight: FontWeight.w700, color: _text),
             ),
           ),
         ],
@@ -998,24 +786,23 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     );
   }
 
-  Widget _buildRecentVerifications(bool isSmallScreen) {
-    if (_recentVerifications.isEmpty) return SizedBox.shrink();
+  Widget _buildRecentVerifications() {
+    if (_recentVerifications.isEmpty) return const SizedBox.shrink();
 
     return Container(
-      margin: EdgeInsets.only(top: 20),
-      padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDarkMode ? Color(0xFF1E293B) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: _surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _stroke, width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.1),
+            color: isDarkMode ? Colors.black26 : kPrimaryDark.withOpacity(0.04),
             blurRadius: 20,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
-        border:
-            isDarkMode ? Border.all(color: Color(0xFF334155), width: 1) : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1025,68 +812,49 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             children: [
               Text(
                 'Recent Verifications',
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 18 : 20,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'BrandonGrotesque',
-                  color: isDarkMode ? Colors.white : Color(0xFF0F172A),
-                ),
+                style: GoogleFonts.afacad(fontSize: 20, fontWeight: FontWeight.w800, color: _text),
               ),
               TextButton(
                 onPressed: _clearAllSavedData,
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 child: Text(
                   'Clear All',
-                  style: TextStyle(
-                    fontSize: isSmallScreen ? 13 : 14,
-                    fontFamily: 'BrandonGrotesque',
-                    color: AppColors.error,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: GoogleFonts.afacad(fontSize: 16, color: kDanger, fontWeight: FontWeight.w700),
                 ),
               ),
             ],
           ),
-          SizedBox(height: 12),
-          ..._recentVerifications
-              .take(5)
-              .map(
-                (verification) => Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.history,
-                        size: isSmallScreen ? 16 : 18,
-                        color:
-                            isDarkMode ? Color(0xFF94A3B8) : Color(0xFF64748B),
-                      ),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          verification['display'],
-                          style: TextStyle(
-                            fontSize: isSmallScreen ? 13 : 14,
-                            fontFamily: 'BrandonGrotesque',
-                            color:
-                                isDarkMode
-                                    ? Color(0xFF94A3B8)
-                                    : Color(0xFF64748B),
-                          ),
-                        ),
-                      ),
-                    ],
+          const SizedBox(height: 16),
+          ..._recentVerifications.take(5).map(
+            (verification) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Icon(Icons.history_rounded, size: 22, color: _muted),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      verification['display'],
+                      style: GoogleFonts.afacad(fontSize: 16, color: _text),
+                    ),
                   ),
-                ),
+                ],
               ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-// Extension to capitalize strings
 extension StringExtension on String {
   String capitalize() {
+    if (isEmpty) return this;
     return "${this[0].toUpperCase()}${substring(1).toLowerCase()}";
   }
 }

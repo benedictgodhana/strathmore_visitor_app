@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../utils/constants.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -6,7 +7,8 @@ class ForgotPasswordScreen extends StatefulWidget {
   _ForgotPasswordScreenState createState() => _ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with SingleTickerProviderStateMixin {
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   bool _isLoading = false;
@@ -39,14 +41,20 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
     try {
       // Simulate a password reset API call (replace with actual API call)
       await Future.delayed(Duration(seconds: 2)); // Simulated delay
-      print('🔍 Password reset requested for email: ${_emailController.text.trim()}');
+      print(
+        '🔍 Password reset requested for email: ${_emailController.text.trim()}',
+      );
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Password reset link sent to ${_emailController.text.trim()}'),
+          content: Text(
+            'Password reset link sent to ${_emailController.text.trim()}',
+          ),
           backgroundColor: AppColors.primaryBlue,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
       _emailController.text = '';
@@ -64,58 +72,57 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
   void _showErrorAlert(String message, {VoidCallback? onRetry}) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        backgroundColor: Colors.white,
-        title: Text(
-          'Reset Error',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            fontFamily: 'BrandonGrotesque',
-            color: AppColors.error,
-          ),
-        ),
-        content: Text(
-          message,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w400,
-            fontFamily: 'BrandonGrotesque',
-            color: Colors.grey.shade600,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(
-              'OK',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'BrandonGrotesque',
-                color: AppColors.primaryBlue,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            backgroundColor: Colors.white,
+            title: Text(
+              'Reset Error',
+              style: GoogleFonts.afacad(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppColors.error,
               ),
             ),
-          ),
-          if (onRetry != null)
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                onRetry();
-              },
-              child: Text(
-                'Retry',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  fontFamily: 'BrandonGrotesque',
-                  color: AppColors.primaryBlue,
+            content: Text(
+              message,
+              style: GoogleFonts.afacad(
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'OK',
+                  style: GoogleFonts.afacad(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primaryBlue,
+                  ),
                 ),
               ),
-            ),
-        ],
-      ),
+              if (onRetry != null)
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    onRetry();
+                  },
+                  child: Text(
+                    'Retry',
+                    style: GoogleFonts.afacad(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primaryBlue,
+                    ),
+                  ),
+                ),
+            ],
+          ),
     );
   }
 
@@ -133,9 +140,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
     return Scaffold(
       backgroundColor: Colors.white,
       body: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-        ),
+        decoration: BoxDecoration(color: Colors.white),
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -158,10 +163,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                         SizedBox(height: 16),
                         Text(
                           'RESET PASSWORD',
-                          style: TextStyle(
+                          style: GoogleFonts.afacad(
                             fontSize: isSmallScreen ? 24 : 28,
                             fontWeight: FontWeight.w700,
-                            fontFamily: 'BrandonGrotesque',
                             color: AppColors.primaryBlue,
                           ),
                           textAlign: TextAlign.center,
@@ -169,10 +173,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                         SizedBox(height: 8),
                         Text(
                           'Enter your email to receive a reset link',
-                          style: TextStyle(
+                          style: GoogleFonts.afacad(
                             fontSize: isSmallScreen ? 14 : 16,
                             fontWeight: FontWeight.w500,
-                            fontFamily: 'BrandonGrotesque',
                             color: Colors.grey.shade600,
                           ),
                           textAlign: TextAlign.center,
@@ -182,34 +185,43 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                           controller: _emailController,
                           decoration: InputDecoration(
                             labelText: 'Email',
-                            labelStyle: TextStyle(
-                              fontFamily: 'BrandonGrotesque',
+                            labelStyle: GoogleFonts.afacad(
                               color: Colors.grey.shade600,
                               fontWeight: FontWeight.w600,
                             ),
-                            prefixIcon: Icon(Icons.email, color: AppColors.primaryBlue),
+                            prefixIcon: Icon(
+                              Icons.email,
+                              color: AppColors.primaryBlue,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.zero,
-                              borderSide: BorderSide(color: Colors.grey.shade300),
+                              borderSide: BorderSide(
+                                color: Colors.grey.shade300,
+                              ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.zero,
-                              borderSide: BorderSide(color: AppColors.primaryBlue, width: 2),
+                              borderSide: BorderSide(
+                                color: AppColors.primaryBlue,
+                                width: 2,
+                              ),
                             ),
                             filled: true,
                             fillColor: Colors.grey.shade50,
-                            contentPadding: EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                            contentPadding: EdgeInsets.symmetric(
+                              vertical: 16,
+                              horizontal: 16,
+                            ),
                           ),
-                          style: TextStyle(
-                            fontFamily: 'BrandonGrotesque',
-                            fontSize: 16,
-                          ),
+                          style: GoogleFonts.afacad(fontSize: 16),
                           keyboardType: TextInputType.emailAddress,
                           validator: (value) {
                             if (value == null || value.trim().isEmpty) {
                               return 'Please enter your email';
                             }
-                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                            if (!RegExp(
+                              r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                            ).hasMatch(value)) {
                               return 'Please enter a valid email';
                             }
                             return null;
@@ -218,48 +230,49 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                         SizedBox(height: 24),
                         _isLoading
                             ? CircularProgressIndicator(
-                                color: AppColors.primaryBlue,
-                                strokeWidth: 3,
-                              )
+                              color: AppColors.primaryBlue,
+                              strokeWidth: 3,
+                            )
                             : ElevatedButton(
-                                onPressed: _resetPassword,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.transparent,
-                                  foregroundColor: Colors.white,
-                                  padding: EdgeInsets.zero,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                                  elevation: 0,
+                              onPressed: _resetPassword,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                foregroundColor: Colors.white,
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.zero,
                                 ),
-                                child: Ink(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        AppColors.primaryBlue,
-                                        AppColors.primaryBlue.withOpacity(0.8),
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
-                                    borderRadius: BorderRadius.zero,
+                                elevation: 0,
+                              ),
+                              child: Ink(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      AppColors.primaryBlue,
+                                      AppColors.primaryBlue.withOpacity(0.8),
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
                                   ),
-                                  child: Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: isSmallScreen ? 40 : 60,
-                                      vertical: 16,
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      'Send Reset Link',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                        fontFamily: 'BrandonGrotesque',
-                                        color: Colors.white,
-                                      ),
+                                  borderRadius: BorderRadius.zero,
+                                ),
+                                child: Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: isSmallScreen ? 40 : 60,
+                                    vertical: 16,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    'Send Reset Link',
+                                    style: GoogleFonts.afacad(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
                                     ),
                                   ),
                                 ),
                               ),
+                            ),
                         SizedBox(height: 16),
                         Align(
                           alignment: Alignment.centerRight,
@@ -267,13 +280,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with Single
                             onPressed: () {
                               Navigator.pop(context);
                             },
-                            icon: Icon(Icons.arrow_back, color: AppColors.primaryBlue, size: 18),
+                            icon: Icon(
+                              Icons.arrow_back,
+                              color: AppColors.primaryBlue,
+                              size: 18,
+                            ),
                             label: Text(
                               'Back to Login',
-                              style: TextStyle(
+                              style: GoogleFonts.afacad(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                fontFamily: 'BrandonGrotesque',
                                 color: AppColors.primaryBlue,
                               ),
                             ),

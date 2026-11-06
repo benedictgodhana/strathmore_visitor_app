@@ -39,9 +39,10 @@ class VisitRecord {
       visitorTagId: map['visitor_tag_id'],
       gateId: map['gate_id'],
       checkInTime: DateTime.parse(map['check_in_time']),
-      checkOutTime: map['check_out_time'] != null
-          ? DateTime.parse(map['check_out_time'])
-          : null,
+      checkOutTime:
+          map['check_out_time'] != null
+              ? DateTime.parse(map['check_out_time'])
+              : null,
       status: map['status'] ?? '',
       createdAt: map['created_at'] ?? DateTime.now().toIso8601String(),
     );

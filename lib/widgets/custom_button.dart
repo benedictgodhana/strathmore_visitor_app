@@ -14,7 +14,8 @@ class CustomButton extends StatelessWidget {
     this.onPressed,
     this.backgroundColor = AppColors.primaryBlue,
     this.icon,
-    this.isLoading = false, required bool isOutlined,
+    this.isLoading = false,
+    required bool isOutlined,
   }) : super(key: key);
 
   @override
@@ -31,27 +32,28 @@ class CustomButton extends StatelessWidget {
           ),
           elevation: 2,
         ),
-        child: isLoading
-            ? CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (icon != null) ...[
-                    Icon(icon, color: Colors.white),
-                    SizedBox(width: 8),
-                  ],
-                  Text(
-                    text,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+        child:
+            isLoading
+                ? CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                )
+                : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (icon != null) ...[
+                      Icon(icon, color: Colors.white),
+                      SizedBox(width: 8),
+                    ],
+                    Text(
+                      text,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
       ),
     );
   }

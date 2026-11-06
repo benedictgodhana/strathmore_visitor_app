@@ -7,6 +7,13 @@ const String kNetworkErrorMessage =
 class AppColors {
   static const Color primaryBlue = Color(0xFF02338D); // #02338D
   static const Color secondaryBlue = Color(0xFF02338D); // #CC9C4A
+
+  // ── Brand ──────────────────────────────────────────────────────────────
+  static const Color primaryLight = Color(0xFF2A5CAA);
+  static const Color primaryDark = Color(0xFF001A4A);
+  static const Color gold = Color(0xFFCC9C4A);
+  static const Color goldLight = Color(0xFFE5B96B);
+
   static const Color success = Color(0xFF4CAF50);
   static const Color warning = Color(0xFFFF9800);
   static const Color error = Color(0xFFF44336);

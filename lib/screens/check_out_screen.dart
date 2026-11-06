@@ -1,89 +1,77 @@
+import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:confetti/confetti.dart';
+import 'package:intl/intl.dart';
 import '../utils/constants.dart';
-import '../components/custom_app_bar.dart';
-import '../components/custom_bottom_nav.dart';
 import '../providers/visitor_provider.dart';
 import '../models/visitor.dart';
-import 'dart:convert';
-
+const Color kPrimary = Color(0xFF0B3D91);
+const Color kPrimaryLight = Color(0xFF1E5AA8);
+const Color kPrimaryDark = Color(0xFF061E45);
+const Color kGold = Color(0xFFB8860B);
+const Color kGoldLight = Color(0xFFD4A72C);
+const Color kSuccess = Color(0xFF047857);
+const Color kDanger = Color(0xFFB91C1C);
+const Color kSignalGreen = Color(0xFF34D399);
+const Color kSignalAmber = Color(0xFFFBBF24);
+const _tabular = [FontFeature.tabularFigures()];
 class CheckOutScreen extends StatefulWidget {
   @override
   _CheckOutScreenState createState() => _CheckOutScreenState();
 }
-
-class _CheckOutScreenState extends State<CheckOutScreen>
-    with TickerProviderStateMixin {
+class _CheckOutScreenState extends State<CheckOutScreen> {
   final _formKey = GlobalKey<FormState>();
   final _idNumberController = TextEditingController();
   final _scrollController = ScrollController();
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  late ConfettiController _confettiController;
   String? _errorMessage;
   String? _successMessage;
   bool _isLoading = false;
   bool _isCheckingOut = false;
   Visitor? _visitor;
-  late AnimationController _animationController;
-  late AnimationController _slideController;
-  late AnimationController _scaleController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-  late Animation<double> _scaleAnimation;
-  late ConfettiController _confettiController;
-  int _currentIndex = 2;
   bool isDarkMode = false;
-  double _scrollOffset = 0;
-
+  String? deviceGate;
+  Color get _bg => isDarkMode ? const Color(0xFF060B1A) : Colors.white;
+  Color get _surface => isDarkMode ? const Color(0xFF0D1730) : Colors.white;
+  Color get _tile => isDarkMode ? const Color(0xFF14213F) : const Color(0xFFE8EEFB);
+  Color get _stroke => isDarkMode ? Colors.white.withOpacity(0.08) : kPrimary.withOpacity(0.10);
+  Color get _text => isDarkMode ? const Color(0xFFF1F5FF) : kPrimaryDark;
+  Color get _muted => isDarkMode ? const Color(0xFF8FA0C4) : const Color(0xFF5B6B85);
+  Color get _accent => isDarkMode ? kGoldLight : kPrimary;
+  Color get _ok => isDarkMode ? kSignalGreen : kSuccess;
+  Color get _warn => isDarkMode ? kSignalAmber : kGold;
   @override
   void initState() {
     super.initState();
-    _initializeAnimations();
-    _loadInitialData();
     _confettiController = ConfettiController(duration: const Duration(seconds: 2));
-    _loadDarkMode();
+    _loadPreferences();
+    _loadInitialData();
   }
-
-  void _initializeAnimations() {
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
-      vsync: this,
-    );
-    _slideController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    );
-    _scaleController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-    
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOutQuart),
-    );
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(parent: _slideController, curve: Curves.fastOutSlowIn),
-    );
-    _scaleAnimation = Tween<double>(begin: 0.95, end: 1.0).animate(
-      CurvedAnimation(parent: _scaleController, curve: Curves.elasticOut),
-    );
-    
-    _animationController.forward();
-    _slideController.forward();
-    _scaleController.forward();
+  @override
+  void dispose() {
+    _idNumberController.dispose();
+    _scrollController.dispose();
+    _confettiController.dispose();
+    super.dispose();
   }
-
-  Future<void> _loadDarkMode() async {
+  Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       isDarkMode = prefs.getBool('isDarkMode') ?? false;
+      deviceGate = prefs.getString('device_gate') ?? 'Main Gate';
     });
   }
-
+  void _toggleDarkMode() async {
+    if (mounted) setState(() => isDarkMode = !isDarkMode);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isDarkMode', isDarkMode);
+  }
   void _loadInitialData() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
@@ -96,28 +84,24 @@ class _CheckOutScreenState extends State<CheckOutScreen>
       }
     });
   }
-
   void _showErrorMessage(String message) {
+    if (!mounted) return;
     setState(() {
       _errorMessage = message;
       _successMessage = null;
     });
-    _animationController.reset();
-    _animationController.forward();
     Future.delayed(const Duration(seconds: 5), () {
       if (mounted && _errorMessage == message) {
         setState(() => _errorMessage = null);
       }
     });
   }
-
   void _showSuccessMessage(String message) {
+    if (!mounted) return;
     setState(() {
       _successMessage = message;
       _errorMessage = null;
     });
-    _animationController.reset();
-    _animationController.forward();
     _confettiController.play();
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && _successMessage == message) {
@@ -125,15 +109,12 @@ class _CheckOutScreenState extends State<CheckOutScreen>
       }
     });
   }
-
   Future<void> _fetchVisitor(String idNumber) async {
     if (idNumber.trim().isEmpty) {
       _showErrorMessage('Please enter an ID number');
       return;
     }
-
     final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
-
     try {
       final validationError = visitorProvider.validateIdNumber(
         idNumber,
@@ -147,27 +128,22 @@ class _CheckOutScreenState extends State<CheckOutScreen>
       _showErrorMessage('Invalid ID number format');
       return;
     }
-
-    if (!_formKey.currentState!.validate()) {
+    if (!(_formKey.currentState?.validate() ?? false)) {
       _showErrorMessage('Please enter a valid ID number');
       return;
     }
-
     setState(() {
       _isLoading = true;
       _errorMessage = null;
       _successMessage = null;
       _visitor = null;
     });
-
     try {
       if (visitorProvider.visitors.isEmpty) {
         await visitorProvider.loadCheckedInVisitors();
       }
-
       final visitors = visitorProvider.visitors;
       final searchId = idNumber.trim().toUpperCase();
-
       Visitor? visitor;
       try {
         visitor = visitors.firstWhere(
@@ -178,15 +154,11 @@ class _CheckOutScreenState extends State<CheckOutScreen>
         _showErrorMessage('No checked-in visitor found with ID "$searchId"');
         return;
       }
-
       if (!_isValidVisitorData(visitor)) {
         _showErrorMessage('Visitor data is incomplete. Please contact administration.');
         return;
       }
-
       setState(() => _visitor = visitor);
-      _animationController.reset();
-      _animationController.forward();
       _scrollToVisitorInfo();
     } catch (e) {
       String errorMsg = 'Error fetching visitor information';
@@ -197,17 +169,15 @@ class _CheckOutScreenState extends State<CheckOutScreen>
       }
       _showErrorMessage(errorMsg);
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
-
   bool _isValidVisitorData(Visitor visitor) {
-    return (visitor.name != null && visitor.name!.isNotEmpty) &&
+    return visitor.name.isNotEmpty &&
         (visitor.identificationNumber != null && visitor.identificationNumber!.isNotEmpty);
   }
-
   void _scrollToVisitorInfo() {
-    Future.delayed(const Duration(milliseconds: 100), () {
+    Future.delayed(const Duration(milliseconds: 150), () {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
@@ -217,22 +187,18 @@ class _CheckOutScreenState extends State<CheckOutScreen>
       }
     });
   }
-
   Future<void> _checkOutVisitor() async {
     if (_visitor == null) {
       _showErrorMessage('No visitor selected for checkout');
       return;
     }
-
     final shouldCheckOut = await _showCheckoutConfirmation();
     if (!shouldCheckOut) return;
-
     setState(() {
       _isCheckingOut = true;
       _errorMessage = null;
       _successMessage = null;
     });
-
     try {
       final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
       final updatedVisitor = _createUpdatedVisitor();
@@ -250,10 +216,9 @@ class _CheckOutScreenState extends State<CheckOutScreen>
       }
       _showErrorMessage(errorMsg);
     } finally {
-      setState(() => _isCheckingOut = false);
+      if (mounted) setState(() => _isCheckingOut = false);
     }
   }
-
   Visitor _createUpdatedVisitor() {
     return Visitor(
       id: _visitor!.id,
@@ -275,7 +240,6 @@ class _CheckOutScreenState extends State<CheckOutScreen>
       checkOutTime: DateTime.now(),
     );
   }
-
   Future<bool> _showCheckoutConfirmation() async {
     return await showDialog<bool>(
           context: context,
@@ -283,17 +247,24 @@ class _CheckOutScreenState extends State<CheckOutScreen>
           builder: (BuildContext context) {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              backgroundColor: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+              backgroundColor: _surface,
               title: Row(
                 children: [
-                  Icon(Icons.logout, color: AppColors.warning),
-                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: _warn.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.logout_rounded, color: _warn, size: 24),
+                  ),
+                  const SizedBox(width: 12),
                   Text(
                     'Confirm Check Out',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+                    style: GoogleFonts.afacad(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: _text,
                     ),
                   ),
                 ],
@@ -304,34 +275,34 @@ class _CheckOutScreenState extends State<CheckOutScreen>
                 children: [
                   Text(
                     'Are you sure you want to check out:',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                    ),
+                    style: GoogleFonts.afacad(fontSize: 16, color: _muted),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: isDarkMode ? const Color(0xFF334155) : Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
+                      color: _tile,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: _stroke),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           _visitor!.name,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                            color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+                          style: GoogleFonts.afacad(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                            color: _text,
                           ),
                         ),
+                        const SizedBox(height: 4),
                         Text(
                           'ID: ${_visitor!.identificationNumber}',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          style: GoogleFonts.afacad(
+                            fontSize: 15,
+                            color: _muted,
+                            fontFeatures: _tabular,
                           ),
                         ),
                       ],
@@ -339,27 +310,35 @@ class _CheckOutScreenState extends State<CheckOutScreen>
                   ),
                 ],
               ),
+              actionsAlignment: MainAxisAlignment.center,
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
                   child: Text(
                     'Cancel',
-                    style: TextStyle(
-                      color: AppColors.primaryBlue,
+                    style: GoogleFonts.afacad(
+                      fontSize: 16,
+                      color: _muted,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-                TextButton(
+                FilledButton(
                   onPressed: () {
                     HapticFeedback.mediumImpact();
                     Navigator.of(context).pop(true);
                   },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _warn,
+                    foregroundColor: isDarkMode ? kPrimaryDark : Colors.white,
+                    shape: const StadiumBorder(),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
                   child: Text(
                     'Check Out',
-                    style: TextStyle(
-                      color: AppColors.warning,
-                      fontWeight: FontWeight.w600,
+                    style: GoogleFonts.afacad(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
@@ -369,53 +348,423 @@ class _CheckOutScreenState extends State<CheckOutScreen>
         ) ??
         false;
   }
-
-  Widget _buildVisitorInfoCard(bool isSmallScreen) {
-    if (_visitor == null) return const SizedBox.shrink();
-
-    return ScaleTransition(
-      scale: _scaleAnimation,
-      child: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 16),
-            padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-                  isDarkMode ? const Color(0xFF0F172A) : Colors.grey.shade50,
+  void _clearForm() {
+    setState(() {
+      _idNumberController.clear();
+      _visitor = null;
+      _errorMessage = null;
+      _successMessage = null;
+    });
+    HapticFeedback.lightImpact();
+  }
+  void _go(String route) {
+    HapticFeedback.selectionClick();
+    Navigator.pushNamed(context, route);
+  }
+  void _goHome() {
+    HapticFeedback.selectionClick();
+    Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+  }
+  Future<void> _logout() async {
+    final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
+    await visitorProvider.logout();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token');
+    await prefs.remove('gate_id');
+    if (mounted) {
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    }
+  }
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: ThemeData(
+        brightness: isDarkMode ? Brightness.dark : Brightness.light,
+        scaffoldBackgroundColor: _bg,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: kPrimary,
+          brightness: isDarkMode ? Brightness.dark : Brightness.light,
+        ),
+      ),
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: isDarkMode ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+        child: Scaffold(
+          key: _scaffoldKey,
+          backgroundColor: _bg,
+          drawer: _buildDrawer(),
+          body: Stack(
+            children: [
+              SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
+                    _buildTopBar(),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        controller: _scrollController,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 48),
+                        child: _buildBody(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Align(
+                alignment: Alignment.topCenter,
+                child: ConfettiWidget(
+                  confettiController: _confettiController,
+                  blastDirectionality: BlastDirectionality.explosive,
+                  shouldLoop: false,
+                  colors: const [Colors.white, kPrimary, kPrimaryLight, kGold, kGoldLight],
+                  numberOfParticles: 50,
+                  gravity: 0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  Widget _buildDrawer() {
+    Widget item(IconData i, String label, VoidCallback onTap) => ListTile(
+      leading: Icon(i, color: Colors.white.withOpacity(0.9), size: 28),
+      title: Text(
+        label,
+        style: GoogleFonts.afacad(
+          color: Colors.white,
+          fontSize: 19,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      onTap: () {
+        Navigator.pop(context);
+        onTap();
+      },
+    );
+    return Drawer(
+      backgroundColor: kPrimaryDark,
+      shape: const RoundedRectangleBorder(),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppStrings.universityName,
+                    style: GoogleFonts.afacad(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'ACCESS CONTROL',
+                    style: GoogleFonts.afacad(
+                      color: kGoldLight,
+                      fontSize: 14,
+                      letterSpacing: 2,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ],
               ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(isDarkMode ? 0.3 : 0.08),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                  spreadRadius: -2,
+            ),
+            item(Icons.grid_view_rounded, 'Dashboard', _goHome),
+            item(Icons.people_alt_outlined, 'All Visitors', () => _go('/visitor-list')),
+            item(Icons.search_rounded, 'Search Records', () => _go('/visitor-search')),
+            item(Icons.verified_user_outlined, 'Verify ID', () => _go('/lost-id-verification')),
+            item(Icons.settings_outlined, 'Settings', () => _go('/settings')),
+            const Spacer(),
+            SwitchListTile(
+              value: isDarkMode,
+              onChanged: (_) => _toggleDarkMode(),
+              activeColor: kGoldLight,
+              secondary: const Icon(Icons.dark_mode_rounded, color: Colors.white70, size: 28),
+              title: Text(
+                'Dark mode',
+                style: GoogleFonts.afacad(
+                  color: Colors.white,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            item(Icons.logout_rounded, 'Log out', _logout),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+  Widget _buildTopBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            tooltip: 'Open menu',
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            icon: Icon(Icons.grid_view_rounded, color: _text, size: 32),
+          ),
+          Text(
+            'Check Out',
+            style: GoogleFonts.afacad(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: _text,
+            ),
+          ),
+          IconButton(
+            tooltip: isDarkMode ? 'Light mode' : 'Dark mode',
+            onPressed: _toggleDarkMode,
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: Icon(
+                isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                key: ValueKey(isDarkMode),
+                color: _text,
+                size: 32,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  Widget _buildBody() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildPageHeader(),
+        const SizedBox(height: 16),
+        _buildSearchPanel(),
+        if (_errorMessage != null) ...[
+          const SizedBox(height: 16),
+          _buildMessageCard(_errorMessage!, kDanger, Icons.error_outline_rounded),
+        ],
+        if (_successMessage != null) ...[
+          const SizedBox(height: 16),
+          _buildMessageCard(_successMessage!, _ok, Icons.check_circle_outline_rounded),
+        ],
+        if (_visitor != null) ...[
+          const SizedBox(height: 20),
+          _buildVisitorInfoPanel(),
+        ],
+        const SizedBox(height: 32),
+        _buildComplianceFooter(),
+      ],
+    );
+  }
+  Widget _buildPageHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Check out visitor',
+          style: GoogleFonts.afacad(
+            fontSize: 36,
+            height: 1.1,
+            fontWeight: FontWeight.w800,
+            color: _text,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Search by ID to securely end their visit.',
+          style: GoogleFonts.afacad(fontSize: 18, color: _muted),
+        ),
+      ],
+    );
+  }
+  Widget _buildSearchPanel() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _stroke, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: isDarkMode ? Colors.black26 : kPrimaryDark.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _accent.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.badge_rounded, color: _accent, size: 28),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Visitor ID',
+                        style: GoogleFonts.afacad(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: _text,
+                        ),
+                      ),
+                      Text(
+                        'Enter ID number to locate visitor',
+                        style: GoogleFonts.afacad(fontSize: 16, color: _muted),
+                      ),
+                    ],
+                  ),
                 ),
               ],
-              border: isDarkMode ? Border.all(color: const Color(0xFF334155), width: 1) : null,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 24),
+            TextFormField(
+              controller: _idNumberController,
+              keyboardType: TextInputType.text,
+              textCapitalization: TextCapitalization.characters,
+              style: GoogleFonts.afacad(fontSize: 20, color: _text),
+              decoration: InputDecoration(
+                hintText: 'Enter ID number',
+                hintStyle: GoogleFonts.afacad(color: _muted, fontSize: 18),
+                prefixIcon: Icon(Icons.search_rounded, color: _accent, size: 28),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide(color: _accent, width: 2),
+                ),
+                filled: true,
+                fillColor: _tile.withOpacity(isDarkMode ? 0.7 : 0.55),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Please enter an ID number';
+                }
+                final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
+                return visitorProvider.validateIdNumber(
+                  value,
+                  _visitor?.identificationType ?? 'national_id',
+                );
+              },
+              onFieldSubmitted: (value) {
+                if (!_isLoading) {
+                  HapticFeedback.lightImpact();
+                  _fetchVisitor(value);
+                }
+              },
+            ),
+            const SizedBox(height: 20),
+            Row(
               children: [
-                _buildCardHeader(isSmallScreen),
-                const SizedBox(height: 24),
-                _buildPersonalInfo(isSmallScreen),
-                if (_visitor!.host != null ||
-                    _visitor!.officeDepartment != null ||
-                    _visitor!.visitType != null) ...[
-                  const SizedBox(height: 20),
-                  _buildVisitInfo(isSmallScreen),
-                ],
-                const SizedBox(height: 20),
-                _buildCheckoutButton(isSmallScreen),
+                Expanded(
+                  child: _primaryAction(
+                    icon: Icons.search_rounded,
+                    label: _isLoading ? 'Searching…' : 'Find Visitor',
+                    loading: _isLoading,
+                    onTap: _isLoading
+                        ? null
+                        : () {
+                            HapticFeedback.mediumImpact();
+                            _fetchVisitor(_idNumberController.text);
+                          },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                OutlinedButton(
+                  onPressed: _isLoading ? null : _clearForm,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _text,
+                    padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                    side: BorderSide(color: _stroke, width: 1.5),
+                    shape: const StadiumBorder(),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.clear_rounded, size: 24),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Clear',
+                        style: GoogleFonts.afacad(fontWeight: FontWeight.w700, fontSize: 18),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  Widget _primaryAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onTap,
+    bool loading = false,
+  }) {
+    return Container(
+      height: 62,
+      decoration: BoxDecoration(
+        color: _accent,
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(30),
+          onTap: onTap,
+          child: Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (loading)
+                  const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                else
+                  Icon(icon, color: isDarkMode ? kPrimaryDark : Colors.white, size: 26),
+                const SizedBox(width: 10),
+                Text(
+                  label,
+                  style: GoogleFonts.afacad(
+                    color: isDarkMode ? kPrimaryDark : Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ],
             ),
           ),
@@ -423,101 +772,152 @@ class _CheckOutScreenState extends State<CheckOutScreen>
       ),
     );
   }
-
-  Widget _buildCardHeader(bool isSmallScreen) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.green, Colors.green.shade700],
-            ),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.green.withOpacity(0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+  Widget _buildVisitorInfoPanel() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _stroke, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: isDarkMode ? Colors.black26 : kPrimaryDark.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
-          child: Icon(
-            Icons.person_outline,
-            color: Colors.white,
-            size: isSmallScreen ? 24 : 28,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Text(
-                'Visitor Found',
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 16 : 18,
-                  fontWeight: FontWeight.w700,
-                  color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+              Container(
+                width: 64,
+                height: 64,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: _ok.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _ok.withOpacity(0.5), width: 2),
+                ),
+                child: Text(
+                  _visitor!.name.isNotEmpty ? _visitor!.name[0].toUpperCase() : '?',
+                  style: GoogleFonts.afacad(
+                    color: _ok,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Ready for checkout',
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 13 : 14,
-                  color: Colors.green,
-                  fontWeight: FontWeight.w500,
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Visitor Found',
+                      style: GoogleFonts.afacad(
+                        fontSize: 15,
+                        letterSpacing: 1.0,
+                        fontWeight: FontWeight.w700,
+                        color: _muted,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _visitor!.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.afacad(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        color: _text,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: _ok.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: _ok.withOpacity(0.30)),
+                ),
+                child: Text(
+                  'ON SITE',
+                  style: GoogleFonts.afacad(
+                    fontSize: 14,
+                    letterSpacing: 0.6,
+                    fontWeight: FontWeight.w800,
+                    color: _ok,
+                  ),
                 ),
               ),
             ],
           ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(20),
+          const SizedBox(height: 24),
+          Divider(height: 1, color: _stroke),
+          const SizedBox(height: 20),
+          _subHeader('Personal Information'),
+          const SizedBox(height: 12),
+          _infoRow('Name', _visitor!.name, Icons.person_rounded),
+          _infoRow('ID Number', _visitor!.identificationNumber ?? '', Icons.badge_rounded),
+          _infoRow(
+            'ID Type',
+            (_visitor!.identificationType ?? '').replaceAll('_', ' ').toUpperCase(),
+            Icons.credit_card_rounded,
           ),
-          child: Text(
-            'CHECKED IN',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.green,
-              fontWeight: FontWeight.w600,
+          if (_visitor!.phoneNumber.isNotEmpty)
+            _infoRow('Phone', _visitor!.phoneNumber, Icons.phone_rounded),
+          if (_visitor!.isMinor && _visitor!.guardianPhone != null && _visitor!.guardianPhone!.isNotEmpty)
+            _infoRow('Guardian Phone', _visitor!.guardianPhone!, Icons.phone_rounded),
+          if (_visitor!.vehicleType != null && _visitor!.vehicleType!.isNotEmpty)
+            _infoRow('Vehicle', '${_visitor!.vehicleType} (${_visitor!.vehicleRegistration ?? "N/A"})', Icons.directions_car_rounded),
+          if (_visitor!.host != null || _visitor!.officeDepartment != null || _visitor!.visitType != null) ...[
+            const SizedBox(height: 20),
+            _subHeader('Visit Information'),
+            const SizedBox(height: 12),
+            _buildVisitInfoRows(),
+          ],
+          const SizedBox(height: 28),
+          SizedBox(
+            width: double.infinity,
+            height: 64,
+            child: ElevatedButton.icon(
+              onPressed: _isCheckingOut ? null : () {
+                HapticFeedback.mediumImpact();
+                _checkOutVisitor();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _warn,
+                foregroundColor: isDarkMode ? kPrimaryDark : Colors.white,
+                shape: const StadiumBorder(),
+                elevation: 0,
+              ),
+              icon: _isCheckingOut
+                  ? const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                    )
+                  : const Icon(Icons.logout_rounded, size: 26),
+              label: Text(
+                _isCheckingOut ? 'Checking Out…' : 'Confirm Check Out',
+                style: GoogleFonts.afacad(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
-
-  Widget _buildPersonalInfo(bool isSmallScreen) {
-    return _buildInfoSection(
-      'Personal Information',
-      Icons.person_outline,
-      AppColors.primaryBlue,
-      [
-        _buildInfoRow('Name', _visitor!.name, Icons.person, isSmallScreen),
-        _buildInfoRow('ID Number', _visitor!.identificationNumber ?? '', Icons.badge, isSmallScreen),
-        _buildInfoRow(
-          'ID Type',
-          (_visitor!.identificationType ?? '').replaceAll('_', ' ').toUpperCase(),
-          Icons.credit_card,
-          isSmallScreen,
-        ),
-        if (_visitor!.phoneNumber != null && _visitor!.phoneNumber!.isNotEmpty)
-          _buildInfoRow('Phone', _visitor!.phoneNumber!, Icons.phone, isSmallScreen),
-        if (_visitor!.isMinor && _visitor!.guardianPhone != null && _visitor!.guardianPhone!.isNotEmpty)
-          _buildInfoRow('Guardian Phone', _visitor!.guardianPhone!, Icons.phone, isSmallScreen),
-        if (_visitor!.vehicleType != null && _visitor!.vehicleType!.isNotEmpty)
-          _buildInfoRow('Vehicle Type', _visitor!.vehicleType!, Icons.directions_car, isSmallScreen),
-      ],
-      isSmallScreen,
-    );
-  }
-
-  Widget _buildVisitInfo(bool isSmallScreen) {
+  Widget _buildVisitInfoRows() {
     final visitorProvider = Provider.of<VisitorProvider>(context, listen: false);
     final destination = visitorProvider.destinations.isNotEmpty
         ? visitorProvider.destinations.firstWhere(
@@ -531,99 +931,54 @@ class _CheckOutScreenState extends State<CheckOutScreen>
             orElse: () => {'id': 'unknown', 'name': _visitor!.visitorTagId ?? 'Unknown'},
           )
         : {'id': 'unknown', 'name': _visitor!.visitorTagId ?? 'Unknown'};
-
-    return _buildInfoSection(
-      'Visit Information',
-      Icons.business,
-      AppColors.info,
-      [
-        _buildInfoRow('Visit Type', _visitor!.visitType?.toUpperCase() ?? 'Unknown', Icons.event, isSmallScreen),
-        _buildInfoRow('Destination', destination['name']?.toString() ?? 'Unknown', Icons.location_on, isSmallScreen),
-        _buildInfoRow('Visitor Tag', tag['name']?.toString() ?? 'Unknown', Icons.tag, isSmallScreen),
-        _buildInfoRow('Gate', (_visitor!.gateId ?? 'Unknown').toString(), Icons.door_front_door, isSmallScreen),
-        _buildInfoRow(
-          'Check-in Time',
-          _formatDateTime(_visitor!.checkInTime ?? DateTime.now()),
-          Icons.access_time,
-          isSmallScreen,
-        ),
-      ],
-      isSmallScreen,
-    );
-  }
-
-  Widget _buildInfoSection(
-    String title,
-    IconData icon,
-    Color color,
-    List<Widget> rows,
-    bool isSmallScreen,
-  ) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: isSmallScreen ? 18 : 20),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: isSmallScreen ? 15 : 16,
-                fontWeight: FontWeight.w700,
-                color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isDarkMode ? const Color(0xFF334155) : Colors.grey[50],
-            borderRadius: BorderRadius.circular(12),
-            border: isDarkMode ? Border.all(color: const Color(0xFF475569), width: 1) : null,
-          ),
-          child: Column(children: rows),
-        ),
+        _infoRow('Visit Type', _visitor!.visitType?.toUpperCase() ?? 'Unknown', Icons.event_rounded),
+        _infoRow('Destination', destination['name']?.toString() ?? 'Unknown', Icons.location_on_rounded),
+        _infoRow('Visitor Tag', tag['name']?.toString() ?? 'Unknown', Icons.tag_rounded),
+        _infoRow('Gate', (_visitor!.gateId ?? 'Unknown').toString(), Icons.door_front_door_outlined),
+        _infoRow('Check-in Time', _formatDateTime(_visitor!.checkInTime ?? DateTime.now()), Icons.access_time_rounded),
       ],
     );
   }
-
-  Widget _buildInfoRow(String label, String value, IconData icon, bool isSmallScreen) {
+  Widget _subHeader(String title) {
+    return Text(
+      title.toUpperCase(),
+      style: GoogleFonts.afacad(
+        fontSize: 15,
+        letterSpacing: 1.2,
+        fontWeight: FontWeight.w800,
+        color: _muted,
+      ),
+    );
+  }
+  Widget _infoRow(String label, String value, IconData icon) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.primaryBlue.withOpacity(0.7), size: isSmallScreen ? 16 : 18),
-          const SizedBox(width: 12),
+          Icon(icon, color: _muted, size: 22),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
-                  style: TextStyle(
-                    fontSize: isSmallScreen ? 11 : 12,
+                  style: GoogleFonts.afacad(
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    color: _muted,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   value,
-                  style: TextStyle(
-                    fontSize: isSmallScreen ? 14 : 15,
-                    fontWeight: FontWeight.w500,
-                    color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+                  style: GoogleFonts.afacad(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                    color: _text,
                   ),
                 ),
               ],
@@ -633,587 +988,50 @@ class _CheckOutScreenState extends State<CheckOutScreen>
       ),
     );
   }
-
-  Widget _buildCheckoutButton(bool isSmallScreen) {
+  Widget _buildMessageCard(String message, Color color, IconData icon) {
     return Container(
-      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppColors.warning, AppColors.warning.withOpacity(0.8)],
-        ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.warning.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withOpacity(0.30), width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 26),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              message,
+              style: GoogleFonts.afacad(
+                fontSize: 17,
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
-      child: ElevatedButton(
-        onPressed: _isCheckingOut ? null : () {
-          HapticFeedback.mediumImpact();
-          _checkOutVisitor();
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          elevation: 0,
-        ),
-        child: _isCheckingOut
-            ? Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Checking Out...',
-                    style: TextStyle(
-                      fontSize: isSmallScreen ? 14 : 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.logout, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Check Out Visitor',
-                    style: TextStyle(
-                      fontSize: isSmallScreen ? 14 : 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-      ),
     );
   }
-
-  Widget _buildMessageCard(String message, Color color, IconData icon, bool isError, bool isSmallScreen) {
-    return ScaleTransition(
-      scale: _scaleAnimation,
-      child: FadeTransition(
-        opacity: _fadeAnimation,
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withOpacity(0.3)),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: isSmallScreen ? 20 : 24),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  message,
-                  style: TextStyle(
-                    fontSize: isSmallScreen ? 13 : 14,
-                    color: color,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+    return '${dateTime.day}/${dateTime.month}/${dateTime.year} '
+        '${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
-
-  void _clearForm() {
-    setState(() {
-      _idNumberController.clear();
-      _visitor = null;
-      _errorMessage = null;
-      _successMessage = null;
-    });
-    HapticFeedback.lightImpact();
-    _animationController.reset();
-    _animationController.forward();
-  }
-
-  void _toggleDarkMode() async {
-    setState(() => isDarkMode = !isDarkMode);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isDarkMode', isDarkMode);
-  }
-
-  void _onBottomNavTap(int index) {
-    setState(() => _currentIndex = index);
-    switch (index) {
-      case 0:
-        Navigator.pushNamed(context, '/home');
-        break;
-      case 1:
-        Navigator.pushNamed(context, '/visitor-registration');
-        break;
-      case 2:
-        break;
-      case 3:
-        Navigator.pushNamed(context, '/lost-id-verification');
-        break;
-      case 4:
-        Navigator.pushNamed(context, '/settings');
-        break;
-    }
-  }
-
-  @override
-  void dispose() {
-    _idNumberController.dispose();
-    _scrollController.dispose();
-    _animationController.dispose();
-    _slideController.dispose();
-    _scaleController.dispose();
-    _confettiController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    final visitorProvider = Provider.of<VisitorProvider>(context);
-
-    return Scaffold(
-      backgroundColor: isDarkMode ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-      extendBodyBehindAppBar: true,
-      appBar: CustomAppBar(
-        title: 'Check Out Visitor',
-        color: Colors.white,
-        backgroundColor: Colors.transparent,
-        showBackButton: true,
-        showNotifications: true,
-        showAccount: true,
-        showLogout: true,
-        notificationCount: visitorProvider.visitors.length,
-        onLogoutTap: () async {
-          await visitorProvider.logout();
-          Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-        },
-        actions: [
-          IconButton(
-            icon: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: Icon(
-                isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                key: ValueKey(isDarkMode),
-                color: Colors.white,
-              ),
-            ),
-            onPressed: _toggleDarkMode,
+  Widget _buildComplianceFooter() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.security_rounded, size: 18, color: _muted),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Text(
+            'Secure Access System · ${AppStrings.universityName}',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.afacad(fontSize: 15, color: _muted),
           ),
-        ],
-        onBack: () => Navigator.pop(context),
-        isDarkMode: isDarkMode,
-      ),
-      body: NotificationListener<ScrollNotification>(
-        onNotification: (notification) {
-          setState(() => _scrollOffset = notification.metrics.pixels);
-          return false;
-        },
-        child: Stack(
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 500),
-              height: 200 + (_scrollOffset * 0.3).clamp(0.0, 80.0),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [AppColors.primaryBlue, AppColors.secondaryBlue, const Color(0xFF1E3A8A)],
-                  stops: const [0.0, 0.5, 1.0],
-                ),
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-              ),
-            ),
-            Align(
-              alignment: Alignment.topCenter,
-              child: ConfettiWidget(
-                confettiController: _confettiController,
-                blastDirectionality: BlastDirectionality.explosive,
-                shouldLoop: false,
-                colors: const [
-                  Colors.white,
-                  AppColors.primaryBlue,
-                  Colors.amber,
-                  Colors.green,
-                  Colors.pink,
-                ],
-                numberOfParticles: 50,
-                gravity: 0.2,
-              ),
-            ),
-            SafeArea(
-              child: CustomScrollView(
-                controller: _scrollController,
-                physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-                slivers: [
-                  SliverToBoxAdapter(child: const SizedBox(height: 20)),
-                  SliverPadding(
-                    padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 16 : 24),
-                    sliver: SliverToBoxAdapter(
-                      child: FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: SlideTransition(
-                          position: _slideAnimation,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Check Out Visitor',
-                                style: TextStyle(
-                                  fontSize: isSmallScreen ? 28 : 32,
-                                  fontWeight: FontWeight.w800,
-                                  fontFamily: 'BrandonGrotesque',
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Enter the visitor ID number to proceed with check-out',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.white.withOpacity(0.8),
-                                  fontFamily: 'BrandonGrotesque',
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  SliverPadding(
-                    padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 16 : 24, vertical: 24),
-                    sliver: SliverToBoxAdapter(
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          children: [
-                            // Info Card
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.05),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primaryBlue.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Icon(Icons.info_outline, color: AppColors.primaryBlue, size: 20),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      'Enter a valid ID number to search for checked-in visitors',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                                        fontFamily: 'BrandonGrotesque',
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            // Search Card
-                            Container(
-                              padding: EdgeInsets.all(isSmallScreen ? 20 : 24),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-                                    isDarkMode ? const Color(0xFF0F172A) : Colors.grey.shade50,
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(isDarkMode ? 0.3 : 0.08),
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 8),
-                                    spreadRadius: -2,
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Visitor ID Number',
-                                    style: TextStyle(
-                                      fontSize: isSmallScreen ? 18 : 20,
-                                      fontWeight: FontWeight.w700,
-                                      fontFamily: 'BrandonGrotesque',
-                                      color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  TextFormField(
-                                    controller: _idNumberController,
-                                    keyboardType: TextInputType.text,
-                                    textCapitalization: TextCapitalization.characters,
-                                    decoration: InputDecoration(
-                                      hintText: 'Enter ID number (e.g., 123456 or passport)',
-                                      hintStyle: TextStyle(
-                                        color: isDarkMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
-                                      ),
-                                      prefixIcon: Icon(Icons.badge, color: AppColors.primaryBlue),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide(color: AppColors.primaryBlue, width: 2),
-                                      ),
-                                      filled: true,
-                                      fillColor: isDarkMode ? const Color(0xFF334155) : Colors.grey[100],
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                    ),
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
-                                    ),
-                                    validator: (value) {
-                                      if (value == null || value.trim().isEmpty) {
-                                        return 'Please enter an ID number';
-                                      }
-                                      return visitorProvider.validateIdNumber(
-                                        value,
-                                        _visitor?.identificationType ?? 'national_id',
-                                      );
-                                    },
-                                    onFieldSubmitted: (value) {
-                                      if (!_isLoading && !visitorProvider.isLoading) {
-                                        HapticFeedback.lightImpact();
-                                        _fetchVisitor(value);
-                                      }
-                                    },
-                                  ),
-                                  const SizedBox(height: 24),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              colors: [AppColors.primaryBlue, AppColors.secondaryBlue],
-                                            ),
-                                            borderRadius: BorderRadius.circular(12),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: AppColors.primaryBlue.withOpacity(0.3),
-                                                blurRadius: 10,
-                                                offset: const Offset(0, 4),
-                                              ),
-                                            ],
-                                          ),
-                                          child: ElevatedButton(
-                                            onPressed: _isLoading || visitorProvider.isLoading
-                                                ? null
-                                                : () {
-                                                    HapticFeedback.mediumImpact();
-                                                    _fetchVisitor(_idNumberController.text);
-                                                  },
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.transparent,
-                                              foregroundColor: Colors.white,
-                                              padding: const EdgeInsets.symmetric(vertical: 16),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                              ),
-                                              elevation: 0,
-                                            ),
-                                            child: _isLoading || visitorProvider.isLoading
-                                                ? Row(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                    children: [
-                                                      SizedBox(
-                                                        height: 20,
-                                                        width: 20,
-                                                        child: CircularProgressIndicator(
-                                                          strokeWidth: 2,
-                                                          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(width: 12),
-                                                      const Text(
-                                                        'Searching...',
-                                                        style: TextStyle(
-                                                          fontSize: 16,
-                                                          fontWeight: FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  )
-                                                : Row(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                    children: const [
-                                                      Icon(Icons.search, size: 20),
-                                                      SizedBox(width: 8),
-                                                      Text(
-                                                        'Find Visitor',
-                                                        style: TextStyle(
-                                                          fontSize: 16,
-                                                          fontWeight: FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      OutlinedButton(
-                                        onPressed: _isLoading || visitorProvider.isLoading ? null : _clearForm,
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: isDarkMode ? Colors.white : AppColors.primaryBlue,
-                                          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                                          side: BorderSide(color: AppColors.primaryBlue),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                        ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.clear, size: 18),
-                                            SizedBox(width: 4),
-                                            Text('Clear'),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (_errorMessage != null) const SizedBox(height: 16),
-                            if (_errorMessage != null) _buildMessageCard(
-                              _errorMessage!,
-                              AppColors.error,
-                              Icons.error_outline,
-                              true,
-                              isSmallScreen,
-                            ),
-                            if (_successMessage != null) const SizedBox(height: 16),
-                            if (_successMessage != null) _buildMessageCard(
-                              _successMessage!,
-                              Colors.green,
-                              Icons.check_circle_outline,
-                              false,
-                              isSmallScreen,
-                            ),
-                            _buildVisitorInfoCard(isSmallScreen),
-                            const SizedBox(height: 32),
-                            Center(
-                              child: Column(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                    decoration: BoxDecoration(
-                                      color: isDarkMode ? const Color(0xFF1E293B) : Colors.grey[100],
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.security,
-                                          size: 16,
-                                          color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'Secure Access System',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                                            fontWeight: FontWeight.w500,
-                                            fontFamily: 'BrandonGrotesque',
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    AppStrings.universityName,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDarkMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
-                                      fontFamily: 'BrandonGrotesque',
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  SliverToBoxAdapter(child: const SizedBox(height: 100)),
-                ],
-              ),
-            ),
-          ],
         ),
-      ),
-      bottomNavigationBar: CustomBottomNav(
-        currentIndex: _currentIndex,
-        onTap: _onBottomNavTap,
-        onNext: () {},
-        onBack: () {},
-        step: 0,
-        isLoading: false,
-        isDarkMode: isDarkMode,
-        children: const <Widget>[],
-      ),
+      ],
     );
   }
 }
